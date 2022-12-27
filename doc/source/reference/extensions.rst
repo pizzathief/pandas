@@ -32,6 +32,7 @@ objects.
    .. autosummary::
       :toctree: api/
 
+      api.extensions.ExtensionArray._accumulate
       api.extensions.ExtensionArray._concat_same_type
       api.extensions.ExtensionArray._formatter
       api.extensions.ExtensionArray._from_factorized
@@ -48,6 +49,8 @@ objects.
       api.extensions.ExtensionArray.equals
       api.extensions.ExtensionArray.factorize
       api.extensions.ExtensionArray.fillna
+      api.extensions.ExtensionArray.insert
+      api.extensions.ExtensionArray.isin
       api.extensions.ExtensionArray.isna
       api.extensions.ExtensionArray.ravel
       api.extensions.ExtensionArray.repeat
@@ -59,6 +62,7 @@ objects.
       api.extensions.ExtensionArray.nbytes
       api.extensions.ExtensionArray.ndim
       api.extensions.ExtensionArray.shape
+      api.extensions.ExtensionArray.tolist
 
 Additionally, we have some utility methods for ensuring your object
 behaves correctly.

@@ -1,25 +1,38 @@
+from __future__ import annotations
+
 from datetime import time
 
 import numpy as np
 
+from pandas._typing import (
+    Scalar,
+    StorageOptions,
+)
 from pandas.compat._optional import import_optional_dependency
+from pandas.util._decorators import doc
 
-from pandas.io.excel._base import _BaseExcelReader
+from pandas.core.shared_docs import _shared_docs
+
+from pandas.io.excel._base import BaseExcelReader
 
 
-class _XlrdReader(_BaseExcelReader):
-    def __init__(self, filepath_or_buffer):
+class XlrdReader(BaseExcelReader):
+    @doc(storage_options=_shared_docs["storage_options"])
+    def __init__(
+        self, filepath_or_buffer, storage_options: StorageOptions = None
+    ) -> None:
         """
         Reader using xlrd engine.
 
         Parameters
         ----------
-        filepath_or_buffer : string, path object or Workbook
+        filepath_or_buffer : str, path object or Workbook
             Object to be parsed.
+        {storage_options}
         """
-        err_msg = "Install xlrd >= 1.0.0 for Excel support"
+        err_msg = "Install xlrd >= 2.0.1 for xls Excel support"
         import_optional_dependency("xlrd", extra=err_msg)
-        super().__init__(filepath_or_buffer)
+        super().__init__(filepath_or_buffer, storage_options=storage_options)
 
     @property
     def _workbook_class(self):
@@ -41,18 +54,22 @@ class _XlrdReader(_BaseExcelReader):
         return self.book.sheet_names()
 
     def get_sheet_by_name(self, name):
+        self.raise_if_bad_sheet_by_name(name)
         return self.book.sheet_by_name(name)
 
     def get_sheet_by_index(self, index):
+        self.raise_if_bad_sheet_by_index(index)
         return self.book.sheet_by_index(index)
 
-    def get_sheet_data(self, sheet, convert_float):
+    def get_sheet_data(
+        self, sheet, file_rows_needed: int | None = None
+    ) -> list[list[Scalar]]:
         from xlrd import (
-            xldate,
+            XL_CELL_BOOLEAN,
             XL_CELL_DATE,
             XL_CELL_ERROR,
-            XL_CELL_BOOLEAN,
             XL_CELL_NUMBER,
+            xldate,
         )
 
         epoch1904 = self.book.datemode
@@ -87,7 +104,7 @@ class _XlrdReader(_BaseExcelReader):
                 cell_contents = np.nan
             elif cell_typ == XL_CELL_BOOLEAN:
                 cell_contents = bool(cell_contents)
-            elif convert_float and cell_typ == XL_CELL_NUMBER:
+            elif cell_typ == XL_CELL_NUMBER:
                 # GH5394 - Excel 'numbers' are always floats
                 # it's a minimal perf hit and less surprising
                 val = int(cell_contents)
@@ -97,7 +114,10 @@ class _XlrdReader(_BaseExcelReader):
 
         data = []
 
-        for i in range(sheet.nrows):
+        nrows = sheet.nrows
+        if file_rows_needed is not None:
+            nrows = min(nrows, file_rows_needed)
+        for i in range(nrows):
             row = [
                 _parse_cell(value, typ)
                 for value, typ in zip(sheet.row_values(i), sheet.row_types(i))

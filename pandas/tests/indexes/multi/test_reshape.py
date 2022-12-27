@@ -5,7 +5,10 @@ import pytest
 import pytz
 
 import pandas as pd
-from pandas import Index, MultiIndex
+from pandas import (
+    Index,
+    MultiIndex,
+)
 import pandas._testing as tm
 
 
@@ -68,6 +71,8 @@ def test_insert(idx):
     tm.assert_frame_equal(left, right, check_dtype=False)
     tm.assert_series_equal(ts, right["3rd"])
 
+
+def test_insert2():
     # GH9250
     idx = (
         [("test1", i) for i in range(5)]
@@ -75,12 +80,12 @@ def test_insert(idx):
         + [("test", 17), ("test", 18)]
     )
 
-    left = pd.Series(np.linspace(0, 10, 11), pd.MultiIndex.from_tuples(idx[:-2]))
+    left = pd.Series(np.linspace(0, 10, 11), MultiIndex.from_tuples(idx[:-2]))
 
     left.loc[("test", 17)] = 11
     left.loc[("test", 18)] = 12
 
-    right = pd.Series(np.linspace(0, 12, 13), pd.MultiIndex.from_tuples(idx))
+    right = pd.Series(np.linspace(0, 12, 13), MultiIndex.from_tuples(idx))
 
     tm.assert_series_equal(left, right)
 
@@ -142,6 +147,25 @@ def test_append_index():
         ),
         None,
     )
+    tm.assert_index_equal(result, expected)
+
+
+@pytest.mark.parametrize("name, exp", [("b", "b"), ("c", None)])
+def test_append_names_match(name, exp):
+    # GH#48288
+    midx = MultiIndex.from_arrays([[1, 2], [3, 4]], names=["a", "b"])
+    midx2 = MultiIndex.from_arrays([[3], [5]], names=["a", name])
+    result = midx.append(midx2)
+    expected = MultiIndex.from_arrays([[1, 2, 3], [3, 4, 5]], names=["a", exp])
+    tm.assert_index_equal(result, expected)
+
+
+def test_append_names_dont_match():
+    # GH#48288
+    midx = MultiIndex.from_arrays([[1, 2], [3, 4]], names=["a", "b"])
+    midx2 = MultiIndex.from_arrays([[3], [5]], names=["x", "y"])
+    result = midx.append(midx2)
+    expected = MultiIndex.from_arrays([[1, 2, 3], [3, 4, 5]], names=None)
     tm.assert_index_equal(result, expected)
 
 

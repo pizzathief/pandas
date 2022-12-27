@@ -1,29 +1,36 @@
-from collections import OrderedDict
-
 import numpy as np
 import pytest
 
-import pandas.util._test_decorators as td
+from pandas.errors import SpecificationError
 
-import pandas as pd
-from pandas import DataFrame, Index, Series, Timestamp, concat
+from pandas import (
+    DataFrame,
+    Index,
+    MultiIndex,
+    Period,
+    Series,
+    Timestamp,
+    concat,
+    date_range,
+    timedelta_range,
+)
 import pandas._testing as tm
-from pandas.core.base import SpecificationError
 
 
-def test_getitem(frame):
-    r = frame.rolling(window=5)
-    tm.assert_index_equal(r._selected_obj.columns, frame.columns)
+def test_getitem(step):
+    frame = DataFrame(np.random.randn(5, 5))
+    r = frame.rolling(window=5, step=step)
+    tm.assert_index_equal(r._selected_obj.columns, frame[::step].columns)
 
-    r = frame.rolling(window=5)[1]
-    assert r._selected_obj.name == frame.columns[1]
+    r = frame.rolling(window=5, step=step)[1]
+    assert r._selected_obj.name == frame[::step].columns[1]
 
     # technically this is allowed
-    r = frame.rolling(window=5)[1, 3]
-    tm.assert_index_equal(r._selected_obj.columns, frame.columns[[1, 3]])
+    r = frame.rolling(window=5, step=step)[1, 3]
+    tm.assert_index_equal(r._selected_obj.columns, frame[::step].columns[[1, 3]])
 
-    r = frame.rolling(window=5)[[1, 3]]
-    tm.assert_index_equal(r._selected_obj.columns, frame.columns[[1, 3]])
+    r = frame.rolling(window=5, step=step)[[1, 3]]
+    tm.assert_index_equal(r._selected_obj.columns, frame[::step].columns[[1, 3]])
 
 
 def test_select_bad_cols():
@@ -47,33 +54,36 @@ def test_attribute_access():
         r.F
 
 
-def tests_skip_nuisance():
+def tests_skip_nuisance(step):
 
     df = DataFrame({"A": range(5), "B": range(5, 10), "C": "foo"})
-    r = df.rolling(window=3)
+    r = df.rolling(window=3, step=step)
     result = r[["A", "B"]].sum()
     expected = DataFrame(
         {"A": [np.nan, np.nan, 3, 6, 9], "B": [np.nan, np.nan, 18, 21, 24]},
         columns=list("AB"),
-    )
+    )[::step]
     tm.assert_frame_equal(result, expected)
 
 
-def test_skip_sum_object_raises():
+def test_skip_sum_object_raises(step):
     df = DataFrame({"A": range(5), "B": range(5, 10), "C": "foo"})
-    r = df.rolling(window=3)
-    result = r.sum()
+    r = df.rolling(window=3, step=step)
+    msg = r"nuisance columns.*Dropped columns were Index\(\['C'\], dtype='object'\)"
+    with tm.assert_produces_warning(FutureWarning, match=msg):
+        # GH#42738
+        result = r.sum()
     expected = DataFrame(
         {"A": [np.nan, np.nan, 3, 6, 9], "B": [np.nan, np.nan, 18, 21, 24]},
         columns=list("AB"),
-    )
+    )[::step]
     tm.assert_frame_equal(result, expected)
 
 
-def test_agg():
+def test_agg(step):
     df = DataFrame({"A": range(5), "B": range(0, 10, 2)})
 
-    r = df.rolling(window=3)
+    r = df.rolling(window=3, step=step)
     a_mean = r["A"].mean()
     a_std = r["A"].std()
     a_sum = r["A"].sum()
@@ -82,7 +92,7 @@ def test_agg():
 
     result = r.aggregate([np.mean, np.std])
     expected = concat([a_mean, a_std, b_mean, b_std], axis=1)
-    expected.columns = pd.MultiIndex.from_product([["A", "B"], ["mean", "std"]])
+    expected.columns = MultiIndex.from_product([["A", "B"], ["mean", "std"]])
     tm.assert_frame_equal(result, expected)
 
     result = r.aggregate({"A": np.mean, "B": np.std})
@@ -92,7 +102,7 @@ def test_agg():
 
     result = r.aggregate({"A": ["mean", "std"]})
     expected = concat([a_mean, a_std], axis=1)
-    expected.columns = pd.MultiIndex.from_tuples([("A", "mean"), ("A", "std")])
+    expected.columns = MultiIndex.from_tuples([("A", "mean"), ("A", "std")])
     tm.assert_frame_equal(result, expected)
 
     result = r["A"].aggregate(["mean", "sum"])
@@ -107,18 +117,26 @@ def test_agg():
 
     with pytest.raises(SpecificationError, match=msg):
         r.aggregate(
-            {
-                "A": {"mean": "mean", "sum": "sum"},
-                "B": {"mean2": "mean", "sum2": "sum"},
-            }
+            {"A": {"mean": "mean", "sum": "sum"}, "B": {"mean2": "mean", "sum2": "sum"}}
         )
 
     result = r.aggregate({"A": ["mean", "std"], "B": ["mean", "std"]})
     expected = concat([a_mean, a_std, b_mean, b_std], axis=1)
 
     exp_cols = [("A", "mean"), ("A", "std"), ("B", "mean"), ("B", "std")]
-    expected.columns = pd.MultiIndex.from_tuples(exp_cols)
+    expected.columns = MultiIndex.from_tuples(exp_cols)
     tm.assert_frame_equal(result, expected, check_like=True)
+
+
+@pytest.mark.parametrize(
+    "func", [["min"], ["mean", "max"], {"b": "sum"}, {"b": "prod", "c": "median"}]
+)
+def test_multi_axis_1_raises(func):
+    # GH#46904
+    df = DataFrame({"a": [1, 1, 2], "b": [3, 4, 5], "c": [6, 7, 8]})
+    r = df.rolling(window=3, axis=1)
+    with pytest.raises(NotImplementedError, match="axis other than 0 is not supported"):
+        r.agg(func)
 
 
 def test_agg_apply(raw):
@@ -135,13 +153,13 @@ def test_agg_apply(raw):
     tm.assert_frame_equal(result, expected, check_like=True)
 
 
-def test_agg_consistency():
+def test_agg_consistency(step):
 
     df = DataFrame({"A": range(5), "B": range(0, 10, 2)})
-    r = df.rolling(window=3)
+    r = df.rolling(window=3, step=step)
 
     result = r.agg([np.sum, np.mean]).columns
-    expected = pd.MultiIndex.from_product([list("AB"), ["sum", "mean"]])
+    expected = MultiIndex.from_product([list("AB"), ["sum", "mean"]])
     tm.assert_index_equal(result, expected)
 
     result = r["A"].agg([np.sum, np.mean]).columns
@@ -149,7 +167,7 @@ def test_agg_consistency():
     tm.assert_index_equal(result, expected)
 
     result = r.agg({"A": [np.sum, np.mean]}).columns
-    expected = pd.MultiIndex.from_tuples([("A", "sum"), ("A", "mean")])
+    expected = MultiIndex.from_tuples([("A", "sum"), ("A", "mean")])
     tm.assert_index_equal(result, expected)
 
 
@@ -166,7 +184,7 @@ def test_agg_nested_dicts():
     expected = concat(
         [r["A"].mean(), r["A"].std(), r["B"].mean(), r["B"].std()], axis=1
     )
-    expected.columns = pd.MultiIndex.from_tuples(
+    expected.columns = MultiIndex.from_tuples(
         [("ra", "mean"), ("ra", "std"), ("rb", "mean"), ("rb", "std")]
     )
     with pytest.raises(SpecificationError, match=msg):
@@ -176,7 +194,7 @@ def test_agg_nested_dicts():
         r.agg({"A": {"ra": ["mean", "std"]}, "B": {"rb": ["mean", "std"]}})
 
 
-def test_count_nonnumeric_types():
+def test_count_nonnumeric_types(step):
     # GH12541
     cols = [
         "int",
@@ -191,32 +209,28 @@ def test_count_nonnumeric_types():
         "dt_nat",
         "periods_nat",
     ]
-    dt_nat_col = [
-        Timestamp("20170101"),
-        Timestamp("20170203"),
-        Timestamp(None),
-    ]
+    dt_nat_col = [Timestamp("20170101"), Timestamp("20170203"), Timestamp(None)]
 
     df = DataFrame(
         {
             "int": [1, 2, 3],
             "float": [4.0, 5.0, 6.0],
             "string": list("abc"),
-            "datetime": pd.date_range("20170101", periods=3),
-            "timedelta": pd.timedelta_range("1 s", periods=3, freq="s"),
+            "datetime": date_range("20170101", periods=3),
+            "timedelta": timedelta_range("1 s", periods=3, freq="s"),
             "periods": [
-                pd.Period("2012-01"),
-                pd.Period("2012-02"),
-                pd.Period("2012-03"),
+                Period("2012-01"),
+                Period("2012-02"),
+                Period("2012-03"),
             ],
             "fl_inf": [1.0, 2.0, np.Inf],
             "fl_nan": [1.0, 2.0, np.NaN],
             "str_nan": ["aa", "bb", np.NaN],
             "dt_nat": dt_nat_col,
             "periods_nat": [
-                pd.Period("2012-01"),
-                pd.Period("2012-02"),
-                pd.Period(None),
+                Period("2012-01"),
+                Period("2012-02"),
+                Period(None),
             ],
         },
         columns=cols,
@@ -237,37 +251,13 @@ def test_count_nonnumeric_types():
             "periods_nat": [1.0, 2.0, 1.0],
         },
         columns=cols,
-    )
+    )[::step]
 
-    result = df.rolling(window=2, min_periods=0).count()
+    result = df.rolling(window=2, min_periods=0, step=step).count()
     tm.assert_frame_equal(result, expected)
 
-    result = df.rolling(1, min_periods=0).count()
-    expected = df.notna().astype(float)
-    tm.assert_frame_equal(result, expected)
-
-
-@td.skip_if_no_scipy
-@pytest.mark.filterwarnings("ignore:can't resolve:ImportWarning")
-def test_window_with_args():
-    # make sure that we are aggregating window functions correctly with arg
-    r = Series(np.random.randn(100)).rolling(
-        window=10, min_periods=1, win_type="gaussian"
-    )
-    expected = concat([r.mean(std=10), r.mean(std=0.01)], axis=1)
-    expected.columns = ["<lambda>", "<lambda>"]
-    result = r.aggregate([lambda x: x.mean(std=10), lambda x: x.mean(std=0.01)])
-    tm.assert_frame_equal(result, expected)
-
-    def a(x):
-        return x.mean(std=10)
-
-    def b(x):
-        return x.mean(std=0.01)
-
-    expected = concat([r.mean(std=10), r.mean(std=0.01)], axis=1)
-    expected.columns = ["a", "b"]
-    result = r.aggregate([a, b])
+    result = df.rolling(1, min_periods=0, step=step).count()
+    expected = df.notna().astype(float)[::step]
     tm.assert_frame_equal(result, expected)
 
 
@@ -314,7 +304,7 @@ def test_preserve_metadata():
 )
 def test_multiple_agg_funcs(func, window_size, expected_vals):
     # GH 15072
-    df = pd.DataFrame(
+    df = DataFrame(
         [
             ["A", 10, 20],
             ["A", 20, 30],
@@ -333,17 +323,76 @@ def test_multiple_agg_funcs(func, window_size, expected_vals):
     else:
         window = f()
 
-    index = pd.MultiIndex.from_tuples(
+    index = MultiIndex.from_tuples(
         [("A", 0), ("A", 1), ("A", 2), ("B", 3), ("B", 4), ("B", 5), ("B", 6)],
         names=["stock", None],
     )
-    columns = pd.MultiIndex.from_tuples(
+    columns = MultiIndex.from_tuples(
         [("low", "mean"), ("low", "max"), ("high", "mean"), ("high", "min")]
     )
-    expected = pd.DataFrame(expected_vals, index=index, columns=columns)
+    expected = DataFrame(expected_vals, index=index, columns=columns)
 
-    result = window.agg(
-        OrderedDict((("low", ["mean", "max"]), ("high", ["mean", "min"])))
-    )
+    result = window.agg({"low": ["mean", "max"], "high": ["mean", "min"]})
 
     tm.assert_frame_equal(result, expected)
+
+
+def test_dont_modify_attributes_after_methods(
+    arithmetic_win_operators, closed, center, min_periods, step
+):
+    # GH 39554
+    roll_obj = Series(range(1)).rolling(
+        1, center=center, closed=closed, min_periods=min_periods, step=step
+    )
+    expected = {attr: getattr(roll_obj, attr) for attr in roll_obj._attributes}
+    getattr(roll_obj, arithmetic_win_operators)()
+    result = {attr: getattr(roll_obj, attr) for attr in roll_obj._attributes}
+    assert result == expected
+
+
+def test_centered_axis_validation(step):
+
+    # ok
+    Series(np.ones(10)).rolling(window=3, center=True, axis=0, step=step).mean()
+
+    # bad axis
+    msg = "No axis named 1 for object type Series"
+    with pytest.raises(ValueError, match=msg):
+        Series(np.ones(10)).rolling(window=3, center=True, axis=1, step=step).mean()
+
+    # ok ok
+    DataFrame(np.ones((10, 10))).rolling(
+        window=3, center=True, axis=0, step=step
+    ).mean()
+    DataFrame(np.ones((10, 10))).rolling(
+        window=3, center=True, axis=1, step=step
+    ).mean()
+
+    # bad axis
+    msg = "No axis named 2 for object type DataFrame"
+    with pytest.raises(ValueError, match=msg):
+        (
+            DataFrame(np.ones((10, 10)))
+            .rolling(window=3, center=True, axis=2, step=step)
+            .mean()
+        )
+
+
+def test_rolling_min_min_periods(step):
+    a = Series([1, 2, 3, 4, 5])
+    result = a.rolling(window=100, min_periods=1, step=step).min()
+    expected = Series(np.ones(len(a)))[::step]
+    tm.assert_series_equal(result, expected)
+    msg = "min_periods 5 must be <= window 3"
+    with pytest.raises(ValueError, match=msg):
+        Series([1, 2, 3]).rolling(window=3, min_periods=5, step=step).min()
+
+
+def test_rolling_max_min_periods(step):
+    a = Series([1, 2, 3, 4, 5], dtype=np.float64)
+    result = a.rolling(window=100, min_periods=1, step=step).max()
+    expected = a[::step]
+    tm.assert_almost_equal(result, expected)
+    msg = "min_periods 5 must be <= window 3"
+    with pytest.raises(ValueError, match=msg):
+        Series([1, 2, 3]).rolling(window=3, min_periods=5, step=step).max()

@@ -1,17 +1,28 @@
-from datetime import datetime, time
-from typing import List, Optional
+from __future__ import annotations
+
+from datetime import (
+    datetime,
+    time,
+)
 
 import numpy as np
 
 from pandas._libs.lib import is_list_like
+from pandas._typing import DateTimeErrorChoices
 
-from pandas.core.dtypes.generic import ABCSeries
+from pandas.core.dtypes.generic import (
+    ABCIndex,
+    ABCSeries,
+)
 from pandas.core.dtypes.missing import notna
 
-from pandas.core.indexes.base import Index
 
-
-def to_time(arg, format=None, infer_time_format=False, errors="raise"):
+def to_time(
+    arg,
+    format=None,
+    infer_time_format: bool = False,
+    errors: DateTimeErrorChoices = "raise",
+):
     """
     Parse time strings to time objects using fixed strptime formats ("%H:%M",
     "%H%M", "%I:%M%p", "%I%M%p", "%H:%M:%S", "%H%M%S", "%I:%M:%S%p",
@@ -54,7 +65,7 @@ def to_time(arg, format=None, infer_time_format=False, errors="raise"):
         if infer_time_format and format is None:
             format = _guess_time_format_for_array(arg)
 
-        times: List[Optional[time]] = []
+        times: list[time | None] = []
         if format is not None:
             for element in arg:
                 try:
@@ -66,7 +77,7 @@ def to_time(arg, format=None, infer_time_format=False, errors="raise"):
                             f"format {format}"
                         )
                         raise ValueError(msg) from err
-                    elif errors == "ignore":
+                    if errors == "ignore":
                         return arg
                     else:
                         times.append(None)
@@ -75,17 +86,20 @@ def to_time(arg, format=None, infer_time_format=False, errors="raise"):
             format_found = False
             for element in arg:
                 time_object = None
-                for time_format in formats:
-                    try:
-                        time_object = datetime.strptime(element, time_format).time()
-                        if not format_found:
-                            # Put the found format in front
-                            fmt = formats.pop(formats.index(time_format))
-                            formats.insert(0, fmt)
-                            format_found = True
-                        break
-                    except (ValueError, TypeError):
-                        continue
+                try:
+                    time_object = time.fromisoformat(element)
+                except (ValueError, TypeError):
+                    for time_format in formats:
+                        try:
+                            time_object = datetime.strptime(element, time_format).time()
+                            if not format_found:
+                                # Put the found format in front
+                                fmt = formats.pop(formats.index(time_format))
+                                formats.insert(0, fmt)
+                                format_found = True
+                            break
+                        except (ValueError, TypeError):
+                            continue
 
                 if time_object is not None:
                     times.append(time_object)
@@ -105,7 +119,7 @@ def to_time(arg, format=None, infer_time_format=False, errors="raise"):
     elif isinstance(arg, ABCSeries):
         values = _convert_listlike(arg._values, format)
         return arg._constructor(values, index=arg.index, name=arg.name)
-    elif isinstance(arg, Index):
+    elif isinstance(arg, ABCIndex):
         return _convert_listlike(arg, format)
     elif is_list_like(arg):
         return _convert_listlike(arg, format)

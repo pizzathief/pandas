@@ -4,7 +4,13 @@ import warnings
 import numpy as np
 
 import pandas as pd
-from pandas import DataFrame, Series, Timestamp, date_range, to_timedelta
+from pandas import (
+    DataFrame,
+    Series,
+    Timestamp,
+    date_range,
+    to_timedelta,
+)
 import pandas._testing as tm
 from pandas.core.algorithms import checked_add_with_arr
 
@@ -53,7 +59,7 @@ class IntFrameWithScalar:
 class OpWithFillValue:
     def setup(self):
         # GH#31300
-        arr = np.arange(10 ** 6)
+        arr = np.arange(10**6)
         df = DataFrame({"A": arr})
         ser = df["A"]
 
@@ -87,7 +93,7 @@ class MixedFrameWithSeriesAxis:
     param_names = ["opname"]
 
     def setup(self, opname):
-        arr = np.arange(10 ** 6).reshape(1000, -1)
+        arr = np.arange(10**6).reshape(1000, -1)
         df = DataFrame(arr)
         df["C"] = 1.0
         self.df = df
@@ -100,6 +106,10 @@ class MixedFrameWithSeriesAxis:
     def time_frame_op_with_series_axis1(self, opname):
         getattr(operator, opname)(self.df, self.ser)
 
+    # exclude comparisons from the params for time_frame_op_with_series_axis1
+    #  since they do not do alignment so raise
+    time_frame_op_with_series_axis1.params = [params[0][6:]]
+
 
 class FrameWithFrameWide:
     # Many-columns, mixed dtypes
@@ -110,32 +120,40 @@ class FrameWithFrameWide:
             operator.add,
             operator.floordiv,
             operator.gt,
-        ]
+        ],
+        [
+            # (n_rows, n_columns)
+            (1_000_000, 10),
+            (100_000, 100),
+            (10_000, 1000),
+            (1000, 10_000),
+        ],
     ]
-    param_names = ["op"]
+    param_names = ["op", "shape"]
 
-    def setup(self, op):
+    def setup(self, op, shape):
         # we choose dtypes so as to make the blocks
         #  a) not perfectly match between right and left
         #  b) appreciably bigger than single columns
-        n_cols = 2000
-        n_rows = 500
+        n_rows, n_cols = shape
+
+        if op is operator.floordiv:
+            # floordiv is much slower than the other operations -> use less data
+            n_rows = n_rows // 10
 
         # construct dataframe with 2 blocks
-        arr1 = np.random.randn(n_rows, int(n_cols / 2)).astype("f8")
-        arr2 = np.random.randn(n_rows, int(n_cols / 2)).astype("f4")
-        df = pd.concat(
-            [pd.DataFrame(arr1), pd.DataFrame(arr2)], axis=1, ignore_index=True,
-        )
+        arr1 = np.random.randn(n_rows, n_cols // 2).astype("f8")
+        arr2 = np.random.randn(n_rows, n_cols // 2).astype("f4")
+        df = pd.concat([DataFrame(arr1), DataFrame(arr2)], axis=1, ignore_index=True)
         # should already be the case, but just to be sure
         df._consolidate_inplace()
 
-        # TODO: GH#33198 the setting here shoudlnt need two steps
-        arr1 = np.random.randn(n_rows, int(n_cols / 4)).astype("f8")
-        arr2 = np.random.randn(n_rows, int(n_cols / 2)).astype("i8")
-        arr3 = np.random.randn(n_rows, int(n_cols / 4)).astype("f8")
+        # TODO: GH#33198 the setting here shouldn't need two steps
+        arr1 = np.random.randn(n_rows, max(n_cols // 4, 3)).astype("f8")
+        arr2 = np.random.randn(n_rows, n_cols // 2).astype("i8")
+        arr3 = np.random.randn(n_rows, n_cols // 4).astype("f8")
         df2 = pd.concat(
-            [pd.DataFrame(arr1), pd.DataFrame(arr2), pd.DataFrame(arr3)],
+            [DataFrame(arr1), DataFrame(arr2), DataFrame(arr3)],
             axis=1,
             ignore_index=True,
         )
@@ -145,11 +163,11 @@ class FrameWithFrameWide:
         self.left = df
         self.right = df2
 
-    def time_op_different_blocks(self, op):
+    def time_op_different_blocks(self, op, shape):
         # blocks (and dtypes) are not aligned
         op(self.left, self.right)
 
-    def time_op_same_blocks(self, op):
+    def time_op_same_blocks(self, op, shape):
         # blocks (and dtypes) are aligned
         op(self.left, self.left)
 
@@ -187,7 +205,7 @@ class Ops:
 
 class Ops2:
     def setup(self):
-        N = 10 ** 3
+        N = 10**3
         self.df = DataFrame(np.random.randn(N, N))
         self.df2 = DataFrame(np.random.randn(N, N))
 
@@ -244,7 +262,7 @@ class Timeseries:
     param_names = ["tz"]
 
     def setup(self, tz):
-        N = 10 ** 6
+        N = 10**6
         halfway = (N // 2) - 1
         self.s = Series(date_range("20010101", periods=N, freq="T", tz=tz))
         self.ts = self.s[halfway]
@@ -266,7 +284,7 @@ class Timeseries:
 
 class IrregularOps:
     def setup(self):
-        N = 10 ** 5
+        N = 10**5
         idx = date_range(start="1/1/2000", periods=N, freq="s")
         s = Series(np.random.randn(N), index=idx)
         self.left = s.sample(frac=1)
@@ -290,7 +308,7 @@ class CategoricalComparisons:
     param_names = ["op"]
 
     def setup(self, op):
-        N = 10 ** 5
+        N = 10**5
         self.cat = pd.Categorical(list("aabbcd") * N, ordered=True)
 
     def time_categorical_op(self, op):
@@ -303,7 +321,7 @@ class IndexArithmetic:
     param_names = ["dtype"]
 
     def setup(self, dtype):
-        N = 10 ** 6
+        N = 10**6
         indexes = {"int": "makeIntIndex", "float": "makeFloatIndex"}
         self.index = getattr(tm, indexes[dtype])(N)
 
@@ -329,7 +347,7 @@ class NumericInferOps:
     param_names = ["dtype"]
 
     def setup(self, dtype):
-        N = 5 * 10 ** 5
+        N = 5 * 10**5
         self.df = DataFrame(
             {"A": np.arange(N).astype(dtype), "B": np.arange(N).astype(dtype)}
         )
@@ -353,7 +371,7 @@ class NumericInferOps:
 class DateInferOps:
     # from GH 7332
     def setup_cache(self):
-        N = 5 * 10 ** 5
+        N = 5 * 10**5
         df = DataFrame({"datetime64": np.arange(N).astype("datetime64[ms]")})
         df["timedelta"] = df["datetime64"] - df["datetime64"]
         return df
@@ -374,7 +392,7 @@ class AddOverflowScalar:
     param_names = ["scalar"]
 
     def setup(self, scalar):
-        N = 10 ** 6
+        N = 10**6
         self.arr = np.arange(N)
 
     def time_add_overflow_scalar(self, scalar):
@@ -383,7 +401,7 @@ class AddOverflowScalar:
 
 class AddOverflowArray:
     def setup(self):
-        N = 10 ** 6
+        N = 10**6
         self.arr = np.arange(N)
         self.arr_rev = np.arange(-N, 0)
         self.arr_mixed = np.array([1, -1]).repeat(N / 2)
@@ -406,7 +424,7 @@ class AddOverflowArray:
 
 
 hcal = pd.tseries.holiday.USFederalHolidayCalendar()
-# These offsets currently raise a NotImplimentedError with .apply_index()
+# These offsets currently raise a NotImplementedError with .apply_index()
 non_apply = [
     pd.offsets.Day(),
     pd.offsets.BYearEnd(),
@@ -443,9 +461,9 @@ class OffsetArrayArithmetic:
 
     def setup(self, offset):
         N = 10000
-        rng = pd.date_range(start="1/1/2000", periods=N, freq="T")
+        rng = date_range(start="1/1/2000", periods=N, freq="T")
         self.rng = rng
-        self.ser = pd.Series(rng)
+        self.ser = Series(rng)
 
     def time_add_series_offset(self, offset):
         with warnings.catch_warnings(record=True):
@@ -462,7 +480,7 @@ class ApplyIndex:
 
     def setup(self, offset):
         N = 10000
-        rng = pd.date_range(start="1/1/2000", periods=N, freq="T")
+        rng = date_range(start="1/1/2000", periods=N, freq="T")
         self.rng = rng
 
     def time_apply_index(self, offset):
@@ -474,17 +492,17 @@ class BinaryOpsMultiIndex:
     param_names = ["func"]
 
     def setup(self, func):
-        date_range = pd.date_range("20200101 00:00", "20200102 0:00", freq="S")
+        array = date_range("20200101 00:00", "20200102 0:00", freq="S")
         level_0_names = [str(i) for i in range(30)]
 
-        index = pd.MultiIndex.from_product([level_0_names, date_range])
+        index = pd.MultiIndex.from_product([level_0_names, array])
         column_names = ["col_1", "col_2"]
 
-        self.df = pd.DataFrame(
+        self.df = DataFrame(
             np.random.rand(len(index), 2), index=index, columns=column_names
         )
 
-        self.arg_df = pd.DataFrame(
+        self.arg_df = DataFrame(
             np.random.randint(1, 10, (len(level_0_names), 2)),
             index=level_0_names,
             columns=column_names,

@@ -1,5 +1,7 @@
 """ basic inference routines """
 
+from __future__ import annotations
+
 from collections import abc
 from numbers import Number
 import re
@@ -41,7 +43,7 @@ def is_number(obj) -> bool:
 
     Returns
     -------
-    is_number : bool
+    bool
         Whether `obj` is a number or not.
 
     See Also
@@ -50,25 +52,26 @@ def is_number(obj) -> bool:
 
     Examples
     --------
-    >>> pd.api.types.is_number(1)
+    >>> from pandas.api.types import is_number
+    >>> is_number(1)
     True
-    >>> pd.api.types.is_number(7.15)
+    >>> is_number(7.15)
     True
 
     Booleans are valid because they are int subclass.
 
-    >>> pd.api.types.is_number(False)
+    >>> is_number(False)
     True
 
-    >>> pd.api.types.is_number("foo")
+    >>> is_number("foo")
     False
-    >>> pd.api.types.is_number("5")
+    >>> is_number("5")
     False
     """
     return isinstance(obj, (Number, np.number))
 
 
-def _iterable_not_string(obj) -> bool:
+def iterable_not_string(obj) -> bool:
     """
     Check if the object is an iterable but not a string.
 
@@ -83,11 +86,11 @@ def _iterable_not_string(obj) -> bool:
 
     Examples
     --------
-    >>> _iterable_not_string([1, 2, 3])
+    >>> iterable_not_string([1, 2, 3])
     True
-    >>> _iterable_not_string("foo")
+    >>> iterable_not_string("foo")
     False
-    >>> _iterable_not_string(1)
+    >>> iterable_not_string(1)
     False
     """
     return isinstance(obj, abc.Iterable) and not isinstance(obj, str)
@@ -110,7 +113,7 @@ def is_file_like(obj) -> bool:
 
     Returns
     -------
-    is_file_like : bool
+    bool
         Whether `obj` has file-like properties.
 
     Examples
@@ -125,10 +128,7 @@ def is_file_like(obj) -> bool:
     if not (hasattr(obj, "read") or hasattr(obj, "write")):
         return False
 
-    if not hasattr(obj, "__iter__"):
-        return False
-
-    return True
+    return bool(hasattr(obj, "__iter__"))
 
 
 def is_re(obj) -> bool:
@@ -141,7 +141,7 @@ def is_re(obj) -> bool:
 
     Returns
     -------
-    is_regex : bool
+    bool
         Whether `obj` is a regex pattern.
 
     Examples
@@ -164,7 +164,7 @@ def is_re_compilable(obj) -> bool:
 
     Returns
     -------
-    is_regex_compilable : bool
+    bool
         Whether `obj` can be compiled as a regex pattern.
 
     Examples
@@ -270,7 +270,7 @@ def is_dict_like(obj) -> bool:
 
     Returns
     -------
-    is_dict_like : bool
+    bool
         Whether `obj` has dict-like properties.
 
     Examples
@@ -302,7 +302,7 @@ def is_named_tuple(obj) -> bool:
 
     Returns
     -------
-    is_named_tuple : bool
+    bool
         Whether `obj` is a named tuple.
 
     Examples
@@ -316,7 +316,7 @@ def is_named_tuple(obj) -> bool:
     >>> is_named_tuple((1, 2))
     False
     """
-    return isinstance(obj, tuple) and hasattr(obj, "_fields")
+    return isinstance(obj, abc.Sequence) and hasattr(obj, "_fields")
 
 
 def is_hashable(obj) -> bool:
@@ -417,8 +417,8 @@ def is_dataclass(item):
 
     """
     try:
-        from dataclasses import is_dataclass
+        import dataclasses
 
-        return is_dataclass(item) and not isinstance(item, type)
+        return dataclasses.is_dataclass(item) and not isinstance(item, type)
     except ImportError:
         return False

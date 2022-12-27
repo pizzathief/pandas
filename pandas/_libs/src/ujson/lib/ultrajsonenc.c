@@ -32,7 +32,7 @@ https://github.com/client9/stringencoders
 Copyright (c) 2007  Nick Galbreath -- nickg [at] modp [dot] com. All rights
 reserved.
 
-Numeric decoder derived from from TCL library
+Numeric decoder derived from TCL library
 https://www.opensource.apple.com/source/tcl/tcl-14/tcl/license.terms
  * Copyright (c) 1988-1993 The Regents of the University of California.
  * Copyright (c) 1994 Sun Microsystems, Inc.
@@ -393,7 +393,7 @@ void Buffer_Realloc(JSONObjectEncoder *enc, size_t cbNeeded) {
     enc->end = enc->start + newSize;
 }
 
-FASTCALL_ATTR INLINE_PREFIX void FASTCALL_MSVC
+INLINE_PREFIX void FASTCALL_MSVC
 Buffer_AppendShortHexUnchecked(char *outputOffset, unsigned short value) {
     *(outputOffset++) = g_hexChars[(value & 0xf000) >> 12];
     *(outputOffset++) = g_hexChars[(value & 0x0f00) >> 8];
@@ -722,26 +722,25 @@ int Buffer_EscapeStringValidated(JSOBJ obj, JSONObjectEncoder *enc,
 
 #define Buffer_AppendCharUnchecked(__enc, __chr) *((__enc)->offset++) = __chr;
 
-FASTCALL_ATTR INLINE_PREFIX void FASTCALL_MSVC strreverse(char *begin,
+INLINE_PREFIX void FASTCALL_MSVC strreverse(char *begin,
                                                           char *end) {
     char aux;
     while (end > begin) aux = *end, *end-- = *begin, *begin++ = aux;
 }
 
-void Buffer_AppendIndentNewlineUnchecked(JSONObjectEncoder *enc)
-{
+void Buffer_AppendIndentNewlineUnchecked(JSONObjectEncoder *enc) {
   if (enc->indent > 0) Buffer_AppendCharUnchecked(enc, '\n');
 }
 
 // This function could be refactored to only accept enc as an argument,
 // but this is a straight vendor from ujson source
-void Buffer_AppendIndentUnchecked(JSONObjectEncoder *enc, JSINT32 value)
-{
+void Buffer_AppendIndentUnchecked(JSONObjectEncoder *enc, JSINT32 value) {
   int i;
-  if (enc->indent > 0)
+  if (enc->indent > 0) {
     while (value-- > 0)
       for (i = 0; i < enc->indent; i++)
         Buffer_AppendCharUnchecked(enc, ' ');
+  }
 }
 
 void Buffer_AppendIntUnchecked(JSONObjectEncoder *enc, JSINT32 value) {
@@ -976,7 +975,7 @@ void encode(JSOBJ obj, JSONObjectEncoder *enc, const char *name,
             enc->iterBegin(obj, &tc);
 
             Buffer_AppendCharUnchecked(enc, '[');
-            Buffer_AppendIndentNewlineUnchecked (enc);
+            Buffer_AppendIndentNewlineUnchecked(enc);
 
             while (enc->iterNext(obj, &tc)) {
                 if (count > 0) {
@@ -984,20 +983,20 @@ void encode(JSOBJ obj, JSONObjectEncoder *enc, const char *name,
 #ifndef JSON_NO_EXTRA_WHITESPACE
                     Buffer_AppendCharUnchecked(buffer, ' ');
 #endif
-                    Buffer_AppendIndentNewlineUnchecked (enc);
+                    Buffer_AppendIndentNewlineUnchecked(enc);
                 }
 
                 iterObj = enc->iterGetValue(obj, &tc);
 
                 enc->level++;
-                Buffer_AppendIndentUnchecked (enc, enc->level);
+                Buffer_AppendIndentUnchecked(enc, enc->level);
                 encode(iterObj, enc, NULL, 0);
                 count++;
             }
 
             enc->iterEnd(obj, &tc);
-            Buffer_AppendIndentNewlineUnchecked (enc);
-            Buffer_AppendIndentUnchecked (enc, enc->level);
+            Buffer_AppendIndentNewlineUnchecked(enc);
+            Buffer_AppendIndentUnchecked(enc, enc->level);
             Buffer_AppendCharUnchecked(enc, ']');
             break;
         }
@@ -1007,7 +1006,7 @@ void encode(JSOBJ obj, JSONObjectEncoder *enc, const char *name,
             enc->iterBegin(obj, &tc);
 
             Buffer_AppendCharUnchecked(enc, '{');
-            Buffer_AppendIndentNewlineUnchecked (enc);
+            Buffer_AppendIndentNewlineUnchecked(enc);
 
             while (enc->iterNext(obj, &tc)) {
                 if (count > 0) {
@@ -1015,21 +1014,21 @@ void encode(JSOBJ obj, JSONObjectEncoder *enc, const char *name,
 #ifndef JSON_NO_EXTRA_WHITESPACE
                     Buffer_AppendCharUnchecked(enc, ' ');
 #endif
-                    Buffer_AppendIndentNewlineUnchecked (enc);
+                    Buffer_AppendIndentNewlineUnchecked(enc);
                 }
 
                 iterObj = enc->iterGetValue(obj, &tc);
                 objName = enc->iterGetName(obj, &tc, &szlen);
 
                 enc->level++;
-                Buffer_AppendIndentUnchecked (enc, enc->level);
+                Buffer_AppendIndentUnchecked(enc, enc->level);
                 encode(iterObj, enc, objName, szlen);
                 count++;
             }
 
             enc->iterEnd(obj, &tc);
-            Buffer_AppendIndentNewlineUnchecked (enc);
-            Buffer_AppendIndentUnchecked (enc, enc->level);
+            Buffer_AppendIndentNewlineUnchecked(enc);
+            Buffer_AppendIndentUnchecked(enc, enc->level);
             Buffer_AppendCharUnchecked(enc, '}');
             break;
         }
@@ -1081,11 +1080,11 @@ void encode(JSOBJ obj, JSONObjectEncoder *enc, const char *name,
 
         case JT_UTF8: {
             value = enc->getStringValue(obj, &tc, &szlen);
-            Buffer_Reserve(enc, RESERVE_STRING(szlen));
             if (enc->errorMsg) {
                 enc->endTypeContext(obj, &tc);
                 return;
             }
+            Buffer_Reserve(enc, RESERVE_STRING(szlen));
             Buffer_AppendCharUnchecked(enc, '\"');
 
             if (enc->forceASCII) {
@@ -1134,7 +1133,6 @@ void encode(JSOBJ obj, JSONObjectEncoder *enc, const char *name,
             }
 
             break;
-            
         }
     }
 
@@ -1178,16 +1176,23 @@ char *JSON_EncodeObject(JSOBJ obj, JSONObjectEncoder *enc, char *_buffer,
     enc->offset = enc->start;
 
     locale = setlocale(LC_NUMERIC, NULL);
+    if (!locale) {
+        SetError(NULL, enc, "setlocale call failed");
+        return NULL;
+    }
+
     if (strcmp(locale, "C")) {
-        locale = strdup(locale);
-        if (!locale) {
-            SetError(NULL, enc, "Could not reserve memory block");
-            return NULL;
+        size_t len = strlen(locale) + 1;
+        char *saved_locale = malloc(len);
+        if (saved_locale == NULL) {
+          SetError(NULL, enc, "Could not reserve memory block");
+          return NULL;
         }
+        memcpy(saved_locale, locale, len);
         setlocale(LC_NUMERIC, "C");
         encode(obj, enc, NULL, 0);
-        setlocale(LC_NUMERIC, locale);
-        free(locale);
+        setlocale(LC_NUMERIC, saved_locale);
+        free(saved_locale);
     } else {
         encode(obj, enc, NULL, 0);
     }

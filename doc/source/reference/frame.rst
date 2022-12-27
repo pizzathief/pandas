@@ -37,6 +37,7 @@ Attributes and underlying data
    DataFrame.shape
    DataFrame.memory_usage
    DataFrame.empty
+   DataFrame.set_flags
 
 Conversion
 ~~~~~~~~~~
@@ -62,11 +63,9 @@ Indexing, iteration
    DataFrame.insert
    DataFrame.__iter__
    DataFrame.items
-   DataFrame.iteritems
    DataFrame.keys
    DataFrame.iterrows
    DataFrame.itertuples
-   DataFrame.lookup
    DataFrame.pop
    DataFrame.tail
    DataFrame.xs
@@ -150,7 +149,6 @@ Computations / descriptive stats
    DataFrame.eval
    DataFrame.kurt
    DataFrame.kurtosis
-   DataFrame.mad
    DataFrame.max
    DataFrame.mean
    DataFrame.median
@@ -251,7 +249,6 @@ Combining / comparing / joining / merging
 .. autosummary::
    :toctree: api/
 
-   DataFrame.append
    DataFrame.assign
    DataFrame.compare
    DataFrame.join
@@ -266,8 +263,6 @@ Time Series-related
    DataFrame.asfreq
    DataFrame.asof
    DataFrame.shift
-   DataFrame.slice_shift
-   DataFrame.tshift
    DataFrame.first_valid_index
    DataFrame.last_valid_index
    DataFrame.resample
@@ -275,6 +270,21 @@ Time Series-related
    DataFrame.to_timestamp
    DataFrame.tz_convert
    DataFrame.tz_localize
+
+.. _api.frame.flags:
+
+Flags
+~~~~~
+
+Flags refer to attributes of the pandas object. Properties of the dataset (like
+the date is was recorded, the URL it was accessed from, etc.) should be stored
+in :attr:`DataFrame.attrs`.
+
+.. autosummary::
+   :toctree: api/
+
+   Flags
+
 
 .. _api.frame.metadata:
 
@@ -343,6 +353,7 @@ Sparse-dtype specific methods and attributes are provided under the
 
 .. autosummary::
    :toctree: api/
+   :template: autosummary/accessor_method.rst
 
    DataFrame.sparse.from_spmatrix
    DataFrame.sparse.to_coo
@@ -356,6 +367,7 @@ Serialization / IO / conversion
 
    DataFrame.from_dict
    DataFrame.from_records
+   DataFrame.to_orc
    DataFrame.to_parquet
    DataFrame.to_pickle
    DataFrame.to_csv
@@ -374,3 +386,4 @@ Serialization / IO / conversion
    DataFrame.to_clipboard
    DataFrame.to_markdown
    DataFrame.style
+   DataFrame.__dataframe__

@@ -3,7 +3,12 @@ import sqlite3
 import numpy as np
 from sqlalchemy import create_engine
 
-from pandas import DataFrame, date_range, read_sql_query, read_sql_table
+from pandas import (
+    DataFrame,
+    date_range,
+    read_sql_query,
+    read_sql_table,
+)
 
 from ..pandas_vb_common import tm
 
@@ -33,7 +38,9 @@ class SQL:
             },
             index=tm.makeStringIndex(N),
         )
-        self.df.loc[1000:3000, "float_with_nan"] = np.nan
+        self.df.iloc[1000:3000, 1] = np.nan
+        self.df["date"] = self.df["datetime"].dt.date
+        self.df["time"] = self.df["datetime"].dt.time
         self.df["datetime_string"] = self.df["datetime"].astype(str)
         self.df.to_sql(self.table_name, self.con, if_exists="replace")
 
@@ -48,7 +55,16 @@ class WriteSQLDtypes:
 
     params = (
         ["sqlalchemy", "sqlite"],
-        ["float", "float_with_nan", "string", "bool", "int", "datetime"],
+        [
+            "float",
+            "float_with_nan",
+            "string",
+            "bool",
+            "int",
+            "date",
+            "time",
+            "datetime",
+        ],
     )
     param_names = ["connection", "dtype"]
 
@@ -72,7 +88,9 @@ class WriteSQLDtypes:
             },
             index=tm.makeStringIndex(N),
         )
-        self.df.loc[1000:3000, "float_with_nan"] = np.nan
+        self.df.iloc[1000:3000, 1] = np.nan
+        self.df["date"] = self.df["datetime"].dt.date
+        self.df["time"] = self.df["datetime"].dt.time
         self.df["datetime_string"] = self.df["datetime"].astype(str)
         self.df.to_sql(self.table_name, self.con, if_exists="replace")
 
@@ -99,7 +117,9 @@ class ReadSQLTable:
             },
             index=tm.makeStringIndex(N),
         )
-        self.df.loc[1000:3000, "float_with_nan"] = np.nan
+        self.df.iloc[1000:3000, 1] = np.nan
+        self.df["date"] = self.df["datetime"].dt.date
+        self.df["time"] = self.df["datetime"].dt.time
         self.df["datetime_string"] = self.df["datetime"].astype(str)
         self.df.to_sql(self.table_name, self.con, if_exists="replace")
 
@@ -117,7 +137,16 @@ class ReadSQLTable:
 
 class ReadSQLTableDtypes:
 
-    params = ["float", "float_with_nan", "string", "bool", "int", "datetime"]
+    params = [
+        "float",
+        "float_with_nan",
+        "string",
+        "bool",
+        "int",
+        "date",
+        "time",
+        "datetime",
+    ]
     param_names = ["dtype"]
 
     def setup(self, dtype):
@@ -135,7 +164,9 @@ class ReadSQLTableDtypes:
             },
             index=tm.makeStringIndex(N),
         )
-        self.df.loc[1000:3000, "float_with_nan"] = np.nan
+        self.df.iloc[1000:3000, 1] = np.nan
+        self.df["date"] = self.df["datetime"].dt.date
+        self.df["time"] = self.df["datetime"].dt.time
         self.df["datetime_string"] = self.df["datetime"].astype(str)
         self.df.to_sql(self.table_name, self.con, if_exists="replace")
 

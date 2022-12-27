@@ -6,12 +6,12 @@
 Package overview
 ****************
 
-**pandas** is a `Python <https://www.python.org>`__ package providing fast,
+pandas is a `Python <https://www.python.org>`__ package providing fast,
 flexible, and expressive data structures designed to make working with
 "relational" or "labeled" data both easy and intuitive. It aims to be the
-fundamental high-level building block for doing practical, **real world** data
+fundamental high-level building block for doing practical, **real-world** data
 analysis in Python. Additionally, it has the broader goal of becoming **the
-most powerful and flexible open source data analysis / manipulation tool
+most powerful and flexible open source data analysis/manipulation tool
 available in any language**. It is already well on its way toward this goal.
 
 pandas is well suited for many different kinds of data:
@@ -21,7 +21,7 @@ pandas is well suited for many different kinds of data:
   - Ordered and unordered (not necessarily fixed-frequency) time series data.
   - Arbitrary matrix data (homogeneously typed or heterogeneous) with row and
     column labels
-  - Any other form of observational / statistical data sets. The data actually
+  - Any other form of observational / statistical data sets. The data
     need not be labeled at all to be placed into a pandas data structure
 
 The two primary data structures of pandas, :class:`Series` (1-dimensional)
@@ -29,7 +29,7 @@ and :class:`DataFrame` (2-dimensional), handle the vast majority of typical use
 cases in finance, statistics, social science, and many areas of
 engineering. For R users, :class:`DataFrame` provides everything that R's
 ``data.frame`` provides and much more. pandas is built on top of `NumPy
-<https://www.numpy.org>`__ and is intended to integrate well within a scientific
+<https://numpy.org>`__ and is intended to integrate well within a scientific
 computing environment with many other 3rd party libraries.
 
 Here are just a few of the things that pandas does well:
@@ -40,7 +40,7 @@ Here are just a few of the things that pandas does well:
     higher dimensional objects
   - Automatic and explicit **data alignment**: objects can be explicitly
     aligned to a set of labels, or the user can simply ignore the labels and
-    let `Series`, `DataFrame`, etc. automatically align the data for you in
+    let ``Series``, ``DataFrame``, etc. automatically align the data for you in
     computations
   - Powerful, flexible **group by** functionality to perform
     split-apply-combine operations on data sets, for both aggregating and
@@ -57,7 +57,7 @@ Here are just a few of the things that pandas does well:
     Excel files, databases, and saving / loading data from the ultrafast **HDF5
     format**
   - **Time series**-specific functionality: date range generation and frequency
-    conversion, moving window statistics, date shifting and lagging.
+    conversion, moving window statistics, date shifting, and lagging.
 
 Many of these principles are here to address the shortcomings frequently
 experienced using other languages / scientific research environments. For data
@@ -75,7 +75,7 @@ Some other notes
    specialized tool.
 
  - pandas is a dependency of `statsmodels
-   <https://www.statsmodels.org/stable/index.html>`__, making it an important part of the
+   <https://www.statsmodels.org/>`__, making it an important part of the
    statistical computing ecosystem in Python.
 
  - pandas has been used extensively in production in financial applications.
@@ -101,12 +101,12 @@ fashion.
 
 Also, we would like sensible default behaviors for the common API functions
 which take into account the typical orientation of time series and
-cross-sectional data sets. When using ndarrays to store 2- and 3-dimensional
+cross-sectional data sets. When using the N-dimensional array (ndarrays) to store 2- and 3-dimensional
 data, a burden is placed on the user to consider the orientation of the data
 set when writing functions; axes are considered more or less equivalent (except
 when C- or Fortran-contiguousness matters for performance). In pandas, the axes
 are intended to lend more semantic meaning to the data; i.e., for a particular
-data set there is likely to be a "right" way to orient the data. The goal,
+data set, there is likely to be a "right" way to orient the data. The goal,
 then, is to reduce the amount of mental effort required to code up data
 transformations in downstream functions.
 
@@ -133,7 +133,7 @@ untouched. In general we like to **favor immutability** where sensible.
 Getting support
 ---------------
 
-The first stop for pandas issues and ideas is the `Github Issue Tracker
+The first stop for pandas issues and ideas is the `GitHub Issue Tracker
 <https://github.com/pandas-dev/pandas/issues>`__. If you have a general question,
 pandas community experts can answer through `Stack Overflow
 <https://stackoverflow.com/questions/tagged/pandas>`__.
@@ -147,9 +147,9 @@ pandas possible. Thanks to `all of our contributors <https://github.com/pandas-d
 
 If you're interested in contributing, please visit the :ref:`contributing guide <contributing>`.
 
-pandas is a `NumFOCUS <https://www.numfocus.org/open-source-projects/>`__ sponsored project.
-This will help ensure the success of development of pandas as a world-class open-source
-project, and makes it possible to `donate <https://pandas.pydata.org/donate.html>`__ to the project.
+pandas is a `NumFOCUS <https://numfocus.org/sponsored-projects>`__ sponsored project.
+This will help ensure the success of the development of pandas as a world-class open-source
+project and makes it possible to `donate <https://pandas.pydata.org/donate.html>`__ to the project.
 
 Project governance
 ------------------
@@ -168,10 +168,9 @@ The list of the Core Team members and more detailed information can be found on 
 Institutional partners
 ----------------------
 
-The information about current institutional partners can be found on `pandas website page <https://pandas.pydata.org/about.html>`__.
+The information about current institutional partners can be found on `pandas website page <https://pandas.pydata.org/about/sponsors.html>`__.
 
 License
 -------
 
 .. literalinclude:: ../../../LICENSE
-

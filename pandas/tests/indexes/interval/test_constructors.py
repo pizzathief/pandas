@@ -9,9 +9,7 @@ from pandas.core.dtypes.dtypes import IntervalDtype
 from pandas import (
     Categorical,
     CategoricalIndex,
-    Float64Index,
     Index,
-    Int64Index,
     Interval,
     IntervalIndex,
     date_range,
@@ -20,6 +18,10 @@ from pandas import (
     timedelta_range,
 )
 import pandas._testing as tm
+from pandas.core.api import (
+    Float64Index,
+    Int64Index,
+)
 from pandas.core.arrays import IntervalArray
 import pandas.core.common as com
 
@@ -29,7 +31,7 @@ def name(request):
     return request.param
 
 
-class Base:
+class ConstructorTests:
     """
     Common tests for all variations of IntervalIndex construction. Input data
     to be supplied in breaks format, then converted by the subclass method
@@ -75,10 +77,33 @@ class Base:
         expected = constructor(**expected_kwargs)
 
         result_kwargs = self.get_kwargs_from_breaks(breaks)
-        iv_dtype = IntervalDtype(subtype)
+        iv_dtype = IntervalDtype(subtype, "right")
         for dtype in (iv_dtype, str(iv_dtype)):
             result = constructor(dtype=dtype, **result_kwargs)
             tm.assert_index_equal(result, expected)
+
+    @pytest.mark.parametrize(
+        "breaks",
+        [
+            Int64Index([0, 1, 2, 3, 4]),
+            Int64Index([0, 1, 2, 3, 4]),
+            Int64Index([0, 1, 2, 3, 4]),
+            Float64Index([0, 1, 2, 3, 4]),
+            date_range("2017-01-01", periods=5),
+            timedelta_range("1 day", periods=5),
+        ],
+    )
+    def test_constructor_pass_closed(self, constructor, breaks):
+        # not passing closed to IntervalDtype, but to IntervalArray constructor
+        iv_dtype = IntervalDtype(breaks.dtype)
+
+        result_kwargs = self.get_kwargs_from_breaks(breaks)
+
+        for dtype in (iv_dtype, str(iv_dtype)):
+            with tm.assert_produces_warning(None):
+
+                result = constructor(dtype=dtype, closed="left", **result_kwargs)
+            assert result.dtype.closed == "left"
 
     @pytest.mark.parametrize("breaks", [[np.nan] * 2, [np.nan] * 4, [np.nan] * 50])
     def test_constructor_nan(self, constructor, breaks, closed):
@@ -137,9 +162,6 @@ class Base:
     @pytest.mark.parametrize("cat_constructor", [Categorical, CategoricalIndex])
     def test_constructor_categorical_valid(self, constructor, cat_constructor):
         # GH 21243/21253
-        if isinstance(constructor, partial) and constructor.func is Index:
-            # Index is defined to create CategoricalIndex from categorical data
-            pytest.skip()
 
         breaks = np.arange(10, dtype="int64")
         expected = IntervalIndex.from_breaks(breaks)
@@ -154,7 +176,7 @@ class Base:
         filler = self.get_kwargs_from_breaks(range(10))
 
         # invalid closed
-        msg = "invalid option for 'closed': invalid"
+        msg = "closed must be one of 'right', 'left', 'both', 'neither'"
         with pytest.raises(ValueError, match=msg):
             constructor(closed="invalid", **filler)
 
@@ -182,7 +204,7 @@ class Base:
             constructor(**decreasing_kwargs)
 
 
-class TestFromArrays(Base):
+class TestFromArrays(ConstructorTests):
     """Tests specific to IntervalIndex.from_arrays"""
 
     @pytest.fixture
@@ -231,7 +253,7 @@ class TestFromArrays(Base):
         assert result.dtype.subtype == expected_subtype
 
 
-class TestFromBreaks(Base):
+class TestFromBreaks(ConstructorTests):
     """Tests specific to IntervalIndex.from_breaks"""
 
     @pytest.fixture
@@ -262,8 +284,14 @@ class TestFromBreaks(Base):
         expected = IntervalIndex.from_breaks([])
         tm.assert_index_equal(result, expected)
 
+    def test_left_right_dont_share_data(self):
+        # GH#36310
+        breaks = np.arange(5)
+        result = IntervalIndex.from_breaks(breaks)._data
+        assert result._left.base is None or result._left.base is not result._right.base
 
-class TestFromTuples(Base):
+
+class TestFromTuples(ConstructorTests):
     """Tests specific to IntervalIndex.from_tuples"""
 
     @pytest.fixture
@@ -310,15 +338,20 @@ class TestFromTuples(Base):
         tm.assert_index_equal(idx_na_tuple, idx_na_element)
 
 
-class TestClassConstructors(Base):
+class TestClassConstructors(ConstructorTests):
     """Tests specific to the IntervalIndex/Index constructors"""
 
     @pytest.fixture(
         params=[IntervalIndex, partial(Index, dtype="interval")],
         ids=["IntervalIndex", "Index"],
     )
-    def constructor(self, request):
+    def klass(self, request):
+        # We use a separate fixture here to include Index.__new__ with dtype kwarg
         return request.param
+
+    @pytest.fixture
+    def constructor(self):
+        return IntervalIndex
 
     def get_kwargs_from_breaks(self, breaks, closed="right"):
         """
@@ -329,8 +362,8 @@ class TestClassConstructors(Base):
             return {"data": breaks}
 
         ivs = [
-            Interval(l, r, closed) if notna(l) else l
-            for l, r in zip(breaks[:-1], breaks[1:])
+            Interval(left, right, closed) if notna(left) else left
+            for left, right in zip(breaks[:-1], breaks[1:])
         ]
 
         if isinstance(breaks, list):
@@ -344,7 +377,6 @@ class TestClassConstructors(Base):
         override the base class implementation since errors are handled
         differently; checks unnecessary since caught at the Interval level
         """
-        pass
 
     def test_constructor_string(self):
         # GH23013
@@ -352,25 +384,25 @@ class TestClassConstructors(Base):
         # the interval of strings is already forbidden.
         pass
 
-    def test_constructor_errors(self, constructor):
+    def test_constructor_errors(self, klass):
         # mismatched closed within intervals with no constructor override
         ivs = [Interval(0, 1, closed="right"), Interval(2, 3, closed="left")]
         msg = "intervals must all be closed on the same side"
         with pytest.raises(ValueError, match=msg):
-            constructor(ivs)
+            klass(ivs)
 
         # scalar
         msg = (
-            r"IntervalIndex\(...\) must be called with a collection of "
+            r"(IntervalIndex|Index)\(...\) must be called with a collection of "
             "some kind, 5 was passed"
         )
         with pytest.raises(TypeError, match=msg):
-            constructor(5)
+            klass(5)
 
-        # not an interval
-        msg = "type <class 'numpy.int64'> with value 0 is not an interval"
+        # not an interval; dtype depends on 32bit/windows builds
+        msg = "type <class 'numpy.int(32|64)'> with value 0 is not an interval"
         with pytest.raises(TypeError, match=msg):
-            constructor([0, 1])
+            klass([0, 1])
 
     @pytest.mark.parametrize(
         "data, closed",
@@ -421,3 +453,16 @@ class TestClassConstructors(Base):
         result = Index(intervals)
         expected = Index(intervals, dtype=object)
         tm.assert_index_equal(result, expected)
+
+
+def test_dtype_closed_mismatch():
+    # GH#38394 closed specified in both dtype and IntervalIndex constructor
+
+    dtype = IntervalDtype(np.int64, "left")
+
+    msg = "closed keyword does not match dtype.closed"
+    with pytest.raises(ValueError, match=msg):
+        IntervalIndex([], dtype=dtype, closed="neither")
+
+    with pytest.raises(ValueError, match=msg):
+        IntervalArray([], dtype=dtype, closed="neither")

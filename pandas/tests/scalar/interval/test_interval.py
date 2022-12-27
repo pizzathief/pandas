@@ -1,7 +1,13 @@
 import numpy as np
 import pytest
 
-from pandas import Interval, Period, Timedelta, Timestamp
+from pandas import (
+    Interval,
+    Period,
+    Timedelta,
+    Timestamp,
+)
+import pandas._testing as tm
 import pandas.core.common as com
 
 
@@ -30,11 +36,7 @@ class TestInterval:
         assert 1 in interval
         assert 0 not in interval
 
-        msg = "__contains__ not defined for two intervals"
-        with pytest.raises(TypeError, match=msg):
-            interval in interval
-
-        interval_both = Interval(0, 1, closed="both")
+        interval_both = Interval(0, 1, "both")
         assert 0 in interval_both
         assert 1 in interval_both
 
@@ -78,8 +80,8 @@ class TestInterval:
             (-np.inf, np.inf, np.inf),
             (Timedelta("0 days"), Timedelta("5 days"), Timedelta("5 days")),
             (Timedelta("10 days"), Timedelta("10 days"), Timedelta("0 days")),
-            (Timedelta("1H10M"), Timedelta("5H5M"), Timedelta("3H55M")),
-            (Timedelta("5S"), Timedelta("1H"), Timedelta("59M55S")),
+            (Timedelta("1H10min"), Timedelta("5H5min"), Timedelta("3H55min")),
+            (Timedelta("5S"), Timedelta("1H"), Timedelta("59min55S")),
         ],
     )
     def test_length(self, left, right, expected):
@@ -267,3 +269,11 @@ class TestInterval:
             msg = "left and right must have the same time zone"
         with pytest.raises(error, match=msg):
             Interval(left, right)
+
+    def test_equality_comparison_broadcasts_over_array(self):
+        # https://github.com/pandas-dev/pandas/issues/35931
+        interval = Interval(0, 1)
+        arr = np.array([interval, interval])
+        result = interval == arr
+        expected = np.array([True, True])
+        tm.assert_numpy_array_equal(result, expected)

@@ -1,22 +1,22 @@
 import numpy as np
+import pytest
 
 import pandas as pd
 import pandas._testing as tm
 
 
 class TestSeriesSubclassing:
-    def test_indexing_sliced(self):
+    @pytest.mark.parametrize(
+        "idx_method, indexer, exp_data, exp_idx",
+        [
+            ["loc", ["a", "b"], [1, 2], "ab"],
+            ["iloc", [2, 3], [3, 4], "cd"],
+        ],
+    )
+    def test_indexing_sliced(self, idx_method, indexer, exp_data, exp_idx):
         s = tm.SubclassedSeries([1, 2, 3, 4], index=list("abcd"))
-        res = s.loc[["a", "b"]]
-        exp = tm.SubclassedSeries([1, 2], index=list("ab"))
-        tm.assert_series_equal(res, exp)
-
-        res = s.iloc[[2, 3]]
-        exp = tm.SubclassedSeries([3, 4], index=list("cd"))
-        tm.assert_series_equal(res, exp)
-
-        res = s.loc[["a", "b"]]
-        exp = tm.SubclassedSeries([1, 2], index=list("ab"))
+        res = getattr(s, idx_method)[indexer]
+        exp = tm.SubclassedSeries(exp_data, index=list(exp_idx))
         tm.assert_series_equal(res, exp)
 
     def test_to_frame(self):
@@ -35,8 +35,7 @@ class TestSeriesSubclassing:
         tm.assert_frame_equal(res, exp)
 
     def test_subclass_empty_repr(self):
-        with tm.assert_produces_warning(DeprecationWarning, check_stacklevel=False):
-            sub_series = tm.SubclassedSeries()
+        sub_series = tm.SubclassedSeries()
         assert "SubclassedSeries" in repr(sub_series)
 
     def test_asof(self):
@@ -51,3 +50,11 @@ class TestSeriesSubclassing:
         s = tm.SubclassedSeries([[1, 2, 3], "foo", [], [3, 4]])
         result = s.explode()
         assert isinstance(result, tm.SubclassedSeries)
+
+    def test_equals(self):
+        # https://github.com/pandas-dev/pandas/pull/34402
+        # allow subclass in both directions
+        s1 = pd.Series([1, 2, 3])
+        s2 = tm.SubclassedSeries([1, 2, 3])
+        assert s1.equals(s2)
+        assert s2.equals(s1)

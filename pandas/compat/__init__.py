@@ -7,25 +7,31 @@ Cross-compatible functions for different versions of Python.
 Other items:
 * platform checker
 """
+from __future__ import annotations
+
+import os
 import platform
-import struct
 import sys
-import warnings
 
 from pandas._typing import F
-
-PY37 = sys.version_info >= (3, 7)
-PY38 = sys.version_info >= (3, 8)
-PY39 = sys.version_info >= (3, 9)
-PYPY = platform.python_implementation() == "PyPy"
-
-
-# ----------------------------------------------------------------------------
-# functions largely based / taken from the six module
-
-# Much of the code in this module comes from Benjamin Peterson's six library.
-# The license for this library can be found in LICENSES/SIX and the code can be
-# found at https://bitbucket.org/gutworth/six
+import pandas.compat._compressors
+from pandas.compat._constants import (
+    IS64,
+    PY39,
+    PY310,
+    PY311,
+    PYPY,
+)
+from pandas.compat.numpy import (
+    is_numpy_dev,
+    np_version_under1p21,
+)
+from pandas.compat.pyarrow import (
+    pa_version_under6p0,
+    pa_version_under7p0,
+    pa_version_under8p0,
+    pa_version_under9p0,
+)
 
 
 def set_function_name(f: F, name: str, cls) -> F:
@@ -38,7 +44,6 @@ def set_function_name(f: F, name: str, cls) -> F:
     return f
 
 
-# https://github.com/pandas-dev/pandas/pull/9123
 def is_platform_little_endian() -> bool:
     """
     Checking if the running platform is little endian.
@@ -60,7 +65,7 @@ def is_platform_windows() -> bool:
     bool
         True if the running platform is windows.
     """
-    return sys.platform == "win32" or sys.platform == "cygwin"
+    return sys.platform in ["win32", "cygwin"]
 
 
 def is_platform_linux() -> bool:
@@ -72,7 +77,7 @@ def is_platform_linux() -> bool:
     bool
         True if the running platform is linux.
     """
-    return sys.platform == "linux2"
+    return sys.platform == "linux"
 
 
 def is_platform_mac() -> bool:
@@ -87,39 +92,34 @@ def is_platform_mac() -> bool:
     return sys.platform == "darwin"
 
 
-def is_platform_32bit() -> bool:
+def is_platform_arm() -> bool:
     """
-    Checking if the running platform is 32-bit.
+    Checking if the running platform use ARM architecture.
 
     Returns
     -------
     bool
-        True if the running platform is 32-bit.
+        True if the running platform uses ARM architecture.
     """
-    return struct.calcsize("P") * 8 < 64
+    return platform.machine() in ("arm64", "aarch64") or platform.machine().startswith(
+        "armv"
+    )
 
 
-def _import_lzma():
+def is_ci_environment() -> bool:
     """
-    Importing the `lzma` module.
+    Checking if running in a continuous integration environment by checking
+    the PANDAS_CI environment variable.
 
-    Warns
-    -----
-    When the `lzma` module is not available.
+    Returns
+    -------
+    bool
+        True if the running in a continuous integration environment.
     """
-    try:
-        import lzma
-
-        return lzma
-    except ImportError:
-        msg = (
-            "Could not import the lzma module. Your installed Python is incomplete. "
-            "Attempting to use lzma compression will result in a RuntimeError."
-        )
-        warnings.warn(msg)
+    return os.environ.get("PANDAS_CI", "0") == "1"
 
 
-def _get_lzma_file(lzma):
+def get_lzma_file() -> type[pandas.compat._compressors.LZMAFile]:
     """
     Importing the `LZMAFile` class from the `lzma` module.
 
@@ -133,10 +133,25 @@ def _get_lzma_file(lzma):
     RuntimeError
         If the `lzma` module was not imported correctly, or didn't exist.
     """
-    if lzma is None:
+    if not pandas.compat._compressors.has_lzma:
         raise RuntimeError(
             "lzma module not available. "
             "A Python re-install with the proper dependencies, "
             "might be required to solve this issue."
         )
-    return lzma.LZMAFile
+    return pandas.compat._compressors.LZMAFile
+
+
+__all__ = [
+    "is_numpy_dev",
+    "np_version_under1p21",
+    "pa_version_under6p0",
+    "pa_version_under7p0",
+    "pa_version_under8p0",
+    "pa_version_under9p0",
+    "IS64",
+    "PY39",
+    "PY310",
+    "PY311",
+    "PYPY",
+]

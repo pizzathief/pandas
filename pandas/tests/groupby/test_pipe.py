@@ -1,8 +1,12 @@
 import numpy as np
 
 import pandas as pd
-from pandas import DataFrame, Index
+from pandas import (
+    DataFrame,
+    Index,
+)
 import pandas._testing as tm
+from pandas.core.api import NumericIndex
 
 
 def test_pipe():
@@ -23,7 +27,7 @@ def test_pipe():
         return dfgb.B.max() - dfgb.C.min().min()
 
     def square(srs):
-        return srs ** 2
+        return srs**2
 
     # Note that the transformations are
     # GroupBy -> Series
@@ -42,7 +46,7 @@ def test_pipe_args():
     # Test passing args to the pipe method of DataFrameGroupBy.
     # Issue #17871
 
-    df = pd.DataFrame(
+    df = DataFrame(
         {
             "group": ["A", "A", "B", "B", "C"],
             "x": [1.0, 2.0, 3.0, 2.0, 5.0],
@@ -51,9 +55,8 @@ def test_pipe_args():
     )
 
     def f(dfgb, arg1):
-        return dfgb.filter(lambda grp: grp.y.mean() > arg1, dropna=False).groupby(
-            dfgb.grouper
-        )
+        filtered = dfgb.filter(lambda grp: grp.y.mean() > arg1, dropna=False)
+        return filtered.groupby("group")
 
     def g(dfgb, arg2):
         return dfgb.sum() / dfgb.sum().sum() + arg2
@@ -64,15 +67,15 @@ def test_pipe_args():
     result = df.groupby("group").pipe(f, 0).pipe(g, 10).pipe(h, 100)
 
     # Assert the results here
-    index = pd.Index(["A", "B", "C"], name="group")
-    expected = pd.Series([-79.5160891089, -78.4839108911, -80], index=index)
+    index = Index(["A", "B"], name="group")
+    expected = pd.Series([-79.5160891089, -78.4839108911], index=index)
 
-    tm.assert_series_equal(expected, result)
+    tm.assert_series_equal(result, expected)
 
     # test SeriesGroupby.pipe
     ser = pd.Series([1, 1, 2, 2, 3, 3])
     result = ser.groupby(ser).pipe(lambda grp: grp.sum() * grp.count())
 
-    expected = pd.Series([4, 8, 12], index=pd.Int64Index([1, 2, 3]))
+    expected = pd.Series([4, 8, 12], index=NumericIndex([1, 2, 3], dtype=np.int64))
 
     tm.assert_series_equal(result, expected)

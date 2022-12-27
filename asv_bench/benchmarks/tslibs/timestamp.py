@@ -1,17 +1,18 @@
-import datetime
+from datetime import datetime
 
-import dateutil
 import numpy as np
 import pytz
 
 from pandas import Timestamp
 
+from .tslib import _tzs
+
 
 class TimestampConstruction:
     def setup(self):
         self.npdatetime64 = np.datetime64("2020-01-01 00:00:00")
-        self.dttime_unaware = datetime.datetime(2020, 1, 1, 0, 0, 0)
-        self.dttime_aware = datetime.datetime(2020, 1, 1, 0, 0, 0, 0, pytz.UTC)
+        self.dttime_unaware = datetime(2020, 1, 1, 0, 0, 0)
+        self.dttime_aware = datetime(2020, 1, 1, 0, 0, 0, 0, pytz.UTC)
         self.ts = Timestamp("2020-01-01 00:00:00")
 
     def time_parse_iso8601_no_tz(self):
@@ -49,68 +50,63 @@ class TimestampConstruction:
 
 
 class TimestampProperties:
-    _tzs = [None, pytz.timezone("Europe/Amsterdam"), pytz.UTC, dateutil.tz.tzutc()]
-    _freqs = [None, "B"]
-    params = [_tzs, _freqs]
-    param_names = ["tz", "freq"]
+    params = [_tzs]
+    param_names = ["tz"]
 
-    def setup(self, tz, freq):
-        self.ts = Timestamp("2017-08-25 08:16:14", tzinfo=tz, freq=freq)
+    def setup(self, tz):
+        self.ts = Timestamp("2017-08-25 08:16:14", tzinfo=tz)
 
-    def time_tz(self, tz, freq):
+    def time_tz(self, tz):
         self.ts.tz
 
-    def time_dayofweek(self, tz, freq):
+    def time_dayofweek(self, tz):
         self.ts.dayofweek
 
-    def time_weekday_name(self, tz, freq):
-        self.ts.day_name
-
-    def time_dayofyear(self, tz, freq):
+    def time_dayofyear(self, tz):
         self.ts.dayofyear
 
-    def time_week(self, tz, freq):
+    def time_week(self, tz):
         self.ts.week
 
-    def time_quarter(self, tz, freq):
+    def time_quarter(self, tz):
         self.ts.quarter
 
-    def time_days_in_month(self, tz, freq):
+    def time_days_in_month(self, tz):
         self.ts.days_in_month
 
-    def time_freqstr(self, tz, freq):
-        self.ts.freqstr
-
-    def time_is_month_start(self, tz, freq):
+    def time_is_month_start(self, tz):
         self.ts.is_month_start
 
-    def time_is_month_end(self, tz, freq):
+    def time_is_month_end(self, tz):
         self.ts.is_month_end
 
-    def time_is_quarter_start(self, tz, freq):
+    def time_is_quarter_start(self, tz):
         self.ts.is_quarter_start
 
-    def time_is_quarter_end(self, tz, freq):
+    def time_is_quarter_end(self, tz):
         self.ts.is_quarter_end
 
-    def time_is_year_start(self, tz, freq):
+    def time_is_year_start(self, tz):
         self.ts.is_year_start
 
-    def time_is_year_end(self, tz, freq):
+    def time_is_year_end(self, tz):
         self.ts.is_year_end
 
-    def time_is_leap_year(self, tz, freq):
+    def time_is_leap_year(self, tz):
         self.ts.is_leap_year
 
-    def time_microsecond(self, tz, freq):
+    def time_microsecond(self, tz):
         self.ts.microsecond
 
-    def time_month_name(self, tz, freq):
+    def time_month_name(self, tz):
         self.ts.month_name()
+
+    def time_weekday_name(self, tz):
+        self.ts.day_name()
 
 
 class TimestampOps:
-    params = [None, "US/Eastern", pytz.UTC, dateutil.tz.tzutc()]
+    params = _tzs
     param_names = ["tz"]
 
     def setup(self, tz):
@@ -148,7 +144,7 @@ class TimestampOps:
 
 class TimestampAcrossDst:
     def setup(self):
-        dt = datetime.datetime(2016, 3, 27, 1)
+        dt = datetime(2016, 3, 27, 1)
         self.tzinfo = pytz.timezone("CET").localize(dt, is_dst=False).tzinfo
         self.ts2 = Timestamp(dt)
 

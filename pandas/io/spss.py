@@ -1,22 +1,28 @@
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Optional, Sequence, Union
+from typing import (
+    TYPE_CHECKING,
+    Sequence,
+)
 
 from pandas.compat._optional import import_optional_dependency
 
 from pandas.core.dtypes.inference import is_list_like
 
-from pandas.core.api import DataFrame
+from pandas.io.common import stringify_path
+
+if TYPE_CHECKING:
+    from pandas import DataFrame
 
 
 def read_spss(
-    path: Union[str, Path],
-    usecols: Optional[Sequence[str]] = None,
+    path: str | Path,
+    usecols: Sequence[str] | None = None,
     convert_categoricals: bool = True,
 ) -> DataFrame:
     """
     Load an SPSS file from the file path, returning a DataFrame.
-
-    .. versionadded:: 0.25.0
 
     Parameters
     ----------
@@ -36,10 +42,9 @@ def read_spss(
     if usecols is not None:
         if not is_list_like(usecols):
             raise TypeError("usecols must be list-like.")
-        else:
-            usecols = list(usecols)  # pyreadstat requires a list
+        usecols = list(usecols)  # pyreadstat requires a list
 
     df, _ = pyreadstat.read_sav(
-        path, usecols=usecols, apply_value_formats=convert_categoricals
+        stringify_path(path), usecols=usecols, apply_value_formats=convert_categoricals
     )
     return df

@@ -1,9 +1,96 @@
 from datetime import timedelta
+from itertools import product
 
 import numpy as np
 import pytest
 
-from pandas import Timedelta, offsets, to_timedelta
+from pandas._libs.tslibs import OutOfBoundsTimedelta
+from pandas._libs.tslibs.dtypes import NpyDatetimeUnit
+
+from pandas import (
+    NaT,
+    Timedelta,
+    offsets,
+    to_timedelta,
+)
+
+
+def test_construct_with_weeks_unit_overflow():
+    # GH#47268 don't silently wrap around
+    with pytest.raises(OutOfBoundsTimedelta, match="without overflow"):
+        Timedelta(1000000000000000000, unit="W")
+
+    with pytest.raises(OutOfBoundsTimedelta, match="without overflow"):
+        Timedelta(1000000000000000000.0, unit="W")
+
+
+def test_construct_from_td64_with_unit():
+    # ignore the unit, as it may cause silently overflows leading to incorrect
+    #  results, and in non-overflow cases is irrelevant GH#46827
+    obj = np.timedelta64(123456789000000000, "h")
+
+    with pytest.raises(OutOfBoundsTimedelta, match="123456789000000000 hours"):
+        Timedelta(obj, unit="ps")
+
+    with pytest.raises(OutOfBoundsTimedelta, match="123456789000000000 hours"):
+        Timedelta(obj, unit="ns")
+
+    with pytest.raises(OutOfBoundsTimedelta, match="123456789000000000 hours"):
+        Timedelta(obj)
+
+
+def test_from_td64_retain_resolution():
+    # case where we retain millisecond resolution
+    obj = np.timedelta64(12345, "ms")
+
+    td = Timedelta(obj)
+    assert td.value == obj.view("i8")
+    assert td._creso == NpyDatetimeUnit.NPY_FR_ms.value
+
+    # Case where we cast to nearest-supported reso
+    obj2 = np.timedelta64(1234, "D")
+    td2 = Timedelta(obj2)
+    assert td2._creso == NpyDatetimeUnit.NPY_FR_s.value
+    assert td2 == obj2
+    assert td2.days == 1234
+
+    # Case that _would_ overflow if we didn't support non-nano
+    obj3 = np.timedelta64(1000000000000000000, "us")
+    td3 = Timedelta(obj3)
+    assert td3.total_seconds() == 1000000000000
+    assert td3._creso == NpyDatetimeUnit.NPY_FR_us.value
+
+
+def test_from_pytimedelta_us_reso():
+    # pytimedelta has microsecond resolution, so Timedelta(pytd) inherits that
+    td = timedelta(days=4, minutes=3)
+    result = Timedelta(td)
+    assert result.to_pytimedelta() == td
+    assert result._creso == NpyDatetimeUnit.NPY_FR_us.value
+
+
+def test_from_tick_reso():
+    tick = offsets.Nano()
+    assert Timedelta(tick)._creso == NpyDatetimeUnit.NPY_FR_ns.value
+
+    tick = offsets.Micro()
+    assert Timedelta(tick)._creso == NpyDatetimeUnit.NPY_FR_us.value
+
+    tick = offsets.Milli()
+    assert Timedelta(tick)._creso == NpyDatetimeUnit.NPY_FR_ms.value
+
+    tick = offsets.Second()
+    assert Timedelta(tick)._creso == NpyDatetimeUnit.NPY_FR_s.value
+
+    # everything above Second gets cast to the closest supported reso: second
+    tick = offsets.Minute()
+    assert Timedelta(tick)._creso == NpyDatetimeUnit.NPY_FR_s.value
+
+    tick = offsets.Hour()
+    assert Timedelta(tick)._creso == NpyDatetimeUnit.NPY_FR_s.value
+
+    tick = offsets.Day()
+    assert Timedelta(tick)._creso == NpyDatetimeUnit.NPY_FR_s.value
 
 
 def test_construction():
@@ -182,19 +269,84 @@ def test_td_from_repr_roundtrip(val):
 
 
 def test_overflow_on_construction():
-    msg = "int too (large|big) to convert"
-
     # GH#3374
     value = Timedelta("1day").value * 20169940
-    with pytest.raises(OverflowError, match=msg):
+    msg = "Cannot cast 1742682816000000000000 from ns to 'ns' without overflow"
+    with pytest.raises(OutOfBoundsTimedelta, match=msg):
         Timedelta(value)
 
     # xref GH#17637
-    with pytest.raises(OverflowError, match=msg):
+    msg = "Cannot cast 139993 from D to 'ns' without overflow"
+    with pytest.raises(OutOfBoundsTimedelta, match=msg):
         Timedelta(7 * 19999, unit="D")
 
-    with pytest.raises(OverflowError, match=msg):
-        Timedelta(timedelta(days=13 * 19999))
+    # used to overflow before non-ns support
+    td = Timedelta(timedelta(days=13 * 19999))
+    assert td._creso == NpyDatetimeUnit.NPY_FR_us.value
+    assert td.days == 13 * 19999
+
+
+@pytest.mark.parametrize(
+    "val, unit",
+    [
+        (3508, "M"),
+        (15251, "W"),  # 1
+        (106752, "D"),  # change from previous:
+        (2562048, "h"),  # 0 hours
+        (153722868, "m"),  # 13 minutes
+        (9223372037, "s"),  # 44 seconds
+    ],
+)
+def test_construction_out_of_bounds_td64ns(val, unit):
+    # TODO: parametrize over units just above/below the implementation bounds
+    #  once GH#38964 is resolved
+
+    # Timedelta.max is just under 106752 days
+    td64 = np.timedelta64(val, unit)
+    assert td64.astype("m8[ns]").view("i8") < 0  # i.e. naive astype will be wrong
+
+    td = Timedelta(td64)
+    if unit != "M":
+        # with unit="M" the conversion to "s" is poorly defined
+        #  (and numpy issues DeprecationWarning)
+        assert td.asm8 == td64
+    assert td.asm8.dtype == "m8[s]"
+    msg = r"Cannot cast 1067\d\d days .* to unit='ns' without overflow"
+    with pytest.raises(OutOfBoundsTimedelta, match=msg):
+        td.as_unit("ns")
+
+    # But just back in bounds and we are OK
+    assert Timedelta(td64 - 1) == td64 - 1
+
+    td64 *= -1
+    assert td64.astype("m8[ns]").view("i8") > 0  # i.e. naive astype will be wrong
+
+    td2 = Timedelta(td64)
+    msg = r"Cannot cast -1067\d\d days .* to unit='ns' without overflow"
+    with pytest.raises(OutOfBoundsTimedelta, match=msg):
+        td2.as_unit("ns")
+
+    # But just back in bounds and we are OK
+    assert Timedelta(td64 + 1) == td64 + 1
+
+
+@pytest.mark.parametrize(
+    "val, unit",
+    [
+        (3508 * 10**9, "M"),
+        (15251 * 10**9, "W"),
+        (106752 * 10**9, "D"),
+        (2562048 * 10**9, "h"),
+        (153722868 * 10**9, "m"),
+    ],
+)
+def test_construction_out_of_bounds_td64s(val, unit):
+    td64 = np.timedelta64(val, unit)
+    with pytest.raises(OutOfBoundsTimedelta, match=str(td64)):
+        Timedelta(td64)
+
+    # But just back in bounds and we are OK
+    assert Timedelta(td64 - 10**9) == td64 - 10**9
 
 
 @pytest.mark.parametrize(
@@ -228,6 +380,17 @@ def test_overflow_on_construction():
         ("P0DT0H0M0.001S", Timedelta(milliseconds=1)),
         ("P0DT0H1M0S", Timedelta(minutes=1)),
         ("P1DT25H61M61S", Timedelta(days=1, hours=25, minutes=61, seconds=61)),
+        ("PT1S", Timedelta(seconds=1)),
+        ("PT0S", Timedelta(seconds=0)),
+        ("P1WT0S", Timedelta(days=7, seconds=0)),
+        ("P1D", Timedelta(days=1)),
+        ("P1DT1H", Timedelta(days=1, hours=1)),
+        ("P1W", Timedelta(days=7)),
+        ("PT300S", Timedelta(seconds=300)),
+        ("P1DT0H0M00000000000S", Timedelta(days=1)),
+        ("PT-6H3M", Timedelta(hours=-6, minutes=3)),
+        ("-PT6H3M", Timedelta(hours=-6, minutes=-3)),
+        ("-PT-6H+3M", Timedelta(hours=6, minutes=-3)),
     ],
 )
 def test_iso_constructor(fmt, exp):
@@ -241,8 +404,9 @@ def test_iso_constructor(fmt, exp):
         "PDTHMS",
         "P0DT999H999M999S",
         "P1DT0H0M0.0000000000000S",
-        "P1DT0H0M00000000000S",
         "P1DT0H0M0.S",
+        "P",
+        "-P",
     ],
 )
 def test_iso_constructor_raises(fmt):
@@ -291,6 +455,17 @@ def test_timedelta_constructor_identity():
     assert result is expected
 
 
+def test_timedelta_pass_td_and_kwargs_raises():
+    # don't silently ignore the kwargs GH#48898
+    td = Timedelta(days=1)
+    msg = (
+        "Cannot pass both a Timedelta input and timedelta keyword arguments, "
+        r"got \['days'\]"
+    )
+    with pytest.raises(ValueError, match=msg):
+        Timedelta(td, days=2)
+
+
 @pytest.mark.parametrize(
     "constructor, value, unit, expectation",
     [
@@ -303,3 +478,37 @@ def test_string_with_unit(constructor, value, unit, expectation):
     exp, match = expectation
     with pytest.raises(exp, match=match):
         _ = constructor(value, unit=unit)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "".join(elements)
+        for repetition in (1, 2)
+        for elements in product("+-, ", repeat=repetition)
+    ],
+)
+def test_string_without_numbers(value):
+    # GH39710 Timedelta input string with only symbols and no digits raises an error
+    msg = (
+        "symbols w/o a number"
+        if value != "--"
+        else "only leading negative signs are allowed"
+    )
+    with pytest.raises(ValueError, match=msg):
+        Timedelta(value)
+
+
+def test_timedelta_new_npnat():
+    # GH#48898
+    nat = np.timedelta64("NaT", "h")
+    assert Timedelta(nat) is NaT
+
+
+def test_subclass_respected():
+    # GH#49579
+    class MyCustomTimedelta(Timedelta):
+        pass
+
+    td = MyCustomTimedelta("1 minute")
+    assert isinstance(td, MyCustomTimedelta)

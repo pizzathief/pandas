@@ -1,20 +1,29 @@
+from functools import wraps
+import threading
+
 import numpy as np
 
-from pandas import DataFrame, Series, date_range, factorize, read_csv
-from pandas.core.algorithms import take_1d
+from pandas import (
+    DataFrame,
+    Series,
+    date_range,
+    factorize,
+    read_csv,
+)
+from pandas.core.algorithms import take_nd
 
 from .pandas_vb_common import tm
 
 try:
     from pandas import (
-        rolling_median,
-        rolling_mean,
-        rolling_min,
-        rolling_max,
-        rolling_var,
-        rolling_skew,
         rolling_kurt,
+        rolling_max,
+        rolling_mean,
+        rolling_median,
+        rolling_min,
+        rolling_skew,
         rolling_std,
+        rolling_var,
     )
 
     have_rolling_methods = True
@@ -24,21 +33,57 @@ try:
     from pandas._libs import algos
 except ImportError:
     from pandas import algos
-try:
-    from pandas._testing import test_parallel
-
-    have_real_test_parallel = True
-except ImportError:
-    have_real_test_parallel = False
-
-    def test_parallel(num_threads=1):
-        def wrapper(fname):
-            return fname
-
-        return wrapper
 
 
 from .pandas_vb_common import BaseIO  # isort:skip
+
+
+def test_parallel(num_threads=2, kwargs_list=None):
+    """
+    Decorator to run the same function multiple times in parallel.
+
+    Parameters
+    ----------
+    num_threads : int, optional
+        The number of times the function is run in parallel.
+    kwargs_list : list of dicts, optional
+        The list of kwargs to update original
+        function kwargs on different threads.
+
+    Notes
+    -----
+    This decorator does not pass the return value of the decorated function.
+
+    Original from scikit-image:
+
+    https://github.com/scikit-image/scikit-image/pull/1519
+
+    """
+    assert num_threads > 0
+    has_kwargs_list = kwargs_list is not None
+    if has_kwargs_list:
+        assert len(kwargs_list) == num_threads
+
+    def wrapper(func):
+        @wraps(func)
+        def inner(*args, **kwargs):
+            if has_kwargs_list:
+                update_kwargs = lambda i: dict(kwargs, **kwargs_list[i])
+            else:
+                update_kwargs = lambda i: kwargs
+            threads = []
+            for i in range(num_threads):
+                updated_kwargs = update_kwargs(i)
+                thread = threading.Thread(target=func, args=args, kwargs=updated_kwargs)
+                threads.append(thread)
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+
+        return inner
+
+    return wrapper
 
 
 class ParallelGroupbyMethods:
@@ -47,10 +92,9 @@ class ParallelGroupbyMethods:
     param_names = ["threads", "method"]
 
     def setup(self, threads, method):
-        if not have_real_test_parallel:
-            raise NotImplementedError
-        N = 10 ** 6
-        ngroups = 10 ** 3
+
+        N = 10**6
+        ngroups = 10**3
         df = DataFrame(
             {"key": np.random.randint(0, ngroups, size=N), "data": np.random.randn(N)}
         )
@@ -80,10 +124,9 @@ class ParallelGroups:
     param_names = ["threads"]
 
     def setup(self, threads):
-        if not have_real_test_parallel:
-            raise NotImplementedError
-        size = 2 ** 22
-        ngroups = 10 ** 3
+
+        size = 2**22
+        ngroups = 10**3
         data = Series(np.random.randint(0, ngroups, size=size))
 
         @test_parallel(num_threads=threads)
@@ -102,15 +145,14 @@ class ParallelTake1D:
     param_names = ["dtype"]
 
     def setup(self, dtype):
-        if not have_real_test_parallel:
-            raise NotImplementedError
-        N = 10 ** 6
+
+        N = 10**6
         df = DataFrame({"col": np.arange(N, dtype=dtype)})
         indexer = np.arange(100, len(df) - 100)
 
         @test_parallel(num_threads=2)
         def parallel_take1d():
-            take_1d(df["col"].values, indexer)
+            take_nd(df["col"].values, indexer)
 
         self.parallel_take1d = parallel_take1d
 
@@ -119,15 +161,15 @@ class ParallelTake1D:
 
 
 class ParallelKth:
+    # This depends exclusively on code in _libs/, could go in libs.py
 
     number = 1
     repeat = 5
 
     def setup(self):
-        if not have_real_test_parallel:
-            raise NotImplementedError
-        N = 10 ** 7
-        k = 5 * 10 ** 5
+
+        N = 10**7
+        k = 5 * 10**5
         kwargs_list = [{"arr": np.random.randn(N)}, {"arr": np.random.randn(N)}]
 
         @test_parallel(num_threads=2, kwargs_list=kwargs_list)
@@ -142,9 +184,8 @@ class ParallelKth:
 
 class ParallelDatetimeFields:
     def setup(self):
-        if not have_real_test_parallel:
-            raise NotImplementedError
-        N = 10 ** 6
+
+        N = 10**6
         self.dti = date_range("1900-01-01", periods=N, freq="T")
         self.period = self.dti.to_period("D")
 
@@ -197,8 +238,7 @@ class ParallelRolling:
     param_names = ["method"]
 
     def setup(self, method):
-        if not have_real_test_parallel:
-            raise NotImplementedError
+
         win = 100
         arr = np.random.rand(100000)
         if hasattr(DataFrame, "rolling"):
@@ -241,8 +281,7 @@ class ParallelReadCSV(BaseIO):
     param_names = ["dtype"]
 
     def setup(self, dtype):
-        if not have_real_test_parallel:
-            raise NotImplementedError
+
         rows = 10000
         cols = 50
         data = {
@@ -277,8 +316,6 @@ class ParallelFactorize:
     param_names = ["threads"]
 
     def setup(self, threads):
-        if not have_real_test_parallel:
-            raise NotImplementedError
 
         strings = tm.makeStringIndex(100000)
 

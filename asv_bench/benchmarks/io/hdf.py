@@ -1,8 +1,16 @@
 import numpy as np
 
-from pandas import DataFrame, HDFStore, date_range, read_hdf
+from pandas import (
+    DataFrame,
+    HDFStore,
+    date_range,
+    read_hdf,
+)
 
-from ..pandas_vb_common import BaseIO, tm
+from ..pandas_vb_common import (
+    BaseIO,
+    tm,
+)
 
 
 class HDFStoreDataFrame(BaseIO):
@@ -35,7 +43,7 @@ class HDFStoreDataFrame(BaseIO):
             np.random.randn(N, 100), index=date_range("1/1/2000", periods=N)
         )
         self.df_dc = DataFrame(
-            np.random.randn(N, 10), columns=["C%03d" % i for i in range(10)]
+            np.random.randn(N, 10), columns=[f"C{i:03d}" for i in range(10)]
         )
 
         self.fname = "__test__.h5"

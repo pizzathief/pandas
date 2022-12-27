@@ -1,3 +1,5 @@
+import string
+import sys
 import warnings
 
 import numpy as np
@@ -17,7 +19,7 @@ except ImportError:
 
 class Constructor:
     def setup(self):
-        N = 10 ** 5
+        N = 10**5
         self.categories = list("abcde")
         self.cat_idx = pd.Index(self.categories)
         self.values = np.tile(self.categories, N)
@@ -67,19 +69,77 @@ class Constructor:
         pd.Categorical(self.series)
 
 
+class AsType:
+    def setup(self):
+        N = 10**5
+
+        random_pick = np.random.default_rng().choice
+
+        categories = {
+            "str": list(string.ascii_letters),
+            "int": np.random.randint(2**16, size=154),
+            "float": sys.maxsize * np.random.random((38,)),
+            "timestamp": [
+                pd.Timestamp(x, unit="s") for x in np.random.randint(2**18, size=578)
+            ],
+        }
+
+        self.df = pd.DataFrame(
+            {col: random_pick(cats, N) for col, cats in categories.items()}
+        )
+
+        for col in ("int", "float", "timestamp"):
+            self.df[col + "_as_str"] = self.df[col].astype(str)
+
+        for col in self.df.columns:
+            self.df[col] = self.df[col].astype("category")
+
+    def astype_str(self):
+        [self.df[col].astype("str") for col in "int float timestamp".split()]
+
+    def astype_int(self):
+        [self.df[col].astype("int") for col in "int_as_str timestamp".split()]
+
+    def astype_float(self):
+        [
+            self.df[col].astype("float")
+            for col in "float_as_str int int_as_str timestamp".split()
+        ]
+
+    def astype_datetime(self):
+        self.df["float"].astype(pd.DatetimeTZDtype(tz="US/Pacific"))
+
+
 class Concat:
     def setup(self):
-        N = 10 ** 5
+        N = 10**5
         self.s = pd.Series(list("aabbcd") * N).astype("category")
 
         self.a = pd.Categorical(list("aabbcd") * N)
         self.b = pd.Categorical(list("bbcdjk") * N)
+
+        self.idx_a = pd.CategoricalIndex(range(N), range(N))
+        self.idx_b = pd.CategoricalIndex(range(N + 1), range(N + 1))
+        self.df_a = pd.DataFrame(range(N), columns=["a"], index=self.idx_a)
+        self.df_b = pd.DataFrame(range(N + 1), columns=["a"], index=self.idx_b)
 
     def time_concat(self):
         pd.concat([self.s, self.s])
 
     def time_union(self):
         union_categoricals([self.a, self.b])
+
+    def time_append_overlapping_index(self):
+        self.idx_a.append(self.idx_a)
+
+    def time_append_non_overlapping_index(self):
+        self.idx_a.append(self.idx_b)
+
+    def time_concat_overlapping_index(self):
+        pd.concat([self.df_a, self.df_a])
+
+    def time_concat_non_overlapping_index(self):
+        pd.concat([self.df_a, self.df_b])
 
 
 class ValueCounts:
@@ -88,7 +148,7 @@ class ValueCounts:
     param_names = ["dropna"]
 
     def setup(self, dropna):
-        n = 5 * 10 ** 5
+        n = 5 * 10**5
         arr = [f"s{i:04d}" for i in np.random.randint(0, n // 10, size=n)]
         self.ts = pd.Series(arr).astype("category")
 
@@ -106,7 +166,7 @@ class Repr:
 
 class SetCategories:
     def setup(self):
-        n = 5 * 10 ** 5
+        n = 5 * 10**5
         arr = [f"s{i:04d}" for i in np.random.randint(0, n // 10, size=n)]
         self.ts = pd.Series(arr).astype("category")
 
@@ -116,7 +176,7 @@ class SetCategories:
 
 class RemoveCategories:
     def setup(self):
-        n = 5 * 10 ** 5
+        n = 5 * 10**5
         arr = [f"s{i:04d}" for i in np.random.randint(0, n // 10, size=n)]
         self.ts = pd.Series(arr).astype("category")
 
@@ -126,8 +186,8 @@ class RemoveCategories:
 
 class Rank:
     def setup(self):
-        N = 10 ** 5
-        ncats = 100
+        N = 10**5
+        ncats = 15
 
         self.s_str = pd.Series(tm.makeCategoricalIndex(N, ncats)).astype(str)
         self.s_str_cat = pd.Series(self.s_str, dtype="category")
@@ -160,25 +220,6 @@ class Rank:
         self.s_int_cat_ordered.rank()
 
 
-class Isin:
-
-    params = ["object", "int64"]
-    param_names = ["dtype"]
-
-    def setup(self, dtype):
-        np.random.seed(1234)
-        n = 5 * 10 ** 5
-        sample_size = 100
-        arr = list(np.random.randint(0, n // 10, size=n))
-        if dtype == "object":
-            arr = [f"s{i:04d}" for i in arr]
-        self.sample = np.random.choice(arr, sample_size)
-        self.series = pd.Series(arr).astype("category")
-
-    def time_isin_categorical(self, dtype):
-        self.series.isin(self.sample)
-
-
 class IsMonotonic:
     def setup(self):
         N = 1000
@@ -200,7 +241,7 @@ class IsMonotonic:
 
 class Contains:
     def setup(self):
-        N = 10 ** 5
+        N = 10**5
         self.ci = tm.makeCategoricalIndex(N)
         self.c = self.ci.values
         self.key = self.ci.categories[0]
@@ -218,7 +259,7 @@ class CategoricalSlicing:
     param_names = ["index"]
 
     def setup(self, index):
-        N = 10 ** 6
+        N = 10**6
         categories = ["a", "b", "c"]
         values = [0] * N + [1] * N + [2] * N
         if index == "monotonic_incr":
@@ -254,7 +295,7 @@ class CategoricalSlicing:
 
 class Indexing:
     def setup(self):
-        N = 10 ** 5
+        N = 10**5
         self.index = pd.CategoricalIndex(range(N), range(N))
         self.series = pd.Series(range(N), index=self.index).sort_index()
         self.category = self.index[500]
@@ -263,7 +304,7 @@ class Indexing:
         self.index.get_loc(self.category)
 
     def time_shallow_copy(self):
-        self.index._shallow_copy()
+        self.index._view()
 
     def time_align(self):
         pd.DataFrame({"a": self.series, "b": self.series[:500]})
@@ -286,7 +327,7 @@ class Indexing:
 
 class SearchSorted:
     def setup(self):
-        N = 10 ** 5
+        N = 10**5
         self.ci = tm.makeCategoricalIndex(N).sort_values()
         self.c = self.ci.values
         self.key = self.ci.categories[1]

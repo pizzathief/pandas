@@ -2,10 +2,19 @@ from io import BytesIO
 
 import numpy as np
 from odf.opendocument import OpenDocumentSpreadsheet
-from odf.table import Table, TableCell, TableRow
+from odf.table import (
+    Table,
+    TableCell,
+    TableRow,
+)
 from odf.text import P
 
-from pandas import DataFrame, ExcelWriter, date_range, read_excel
+from pandas import (
+    DataFrame,
+    ExcelWriter,
+    date_range,
+    read_excel,
+)
 
 from ..pandas_vb_common import tm
 
@@ -24,7 +33,7 @@ def _generate_dataframe():
 
 class WriteExcel:
 
-    params = ["openpyxl", "xlsxwriter", "xlwt"]
+    params = ["openpyxl", "xlsxwriter"]
     param_names = ["engine"]
 
     def setup(self, engine):
@@ -33,14 +42,31 @@ class WriteExcel:
     def time_write_excel(self, engine):
         bio = BytesIO()
         bio.seek(0)
-        writer = ExcelWriter(bio, engine=engine)
-        self.df.to_excel(writer, sheet_name="Sheet1")
-        writer.save()
+        with ExcelWriter(bio, engine=engine) as writer:
+            self.df.to_excel(writer, sheet_name="Sheet1")
+
+
+class WriteExcelStyled:
+    params = ["openpyxl", "xlsxwriter"]
+    param_names = ["engine"]
+
+    def setup(self, engine):
+        self.df = _generate_dataframe()
+
+    def time_write_excel_style(self, engine):
+        bio = BytesIO()
+        bio.seek(0)
+        with ExcelWriter(bio, engine=engine) as writer:
+            df_style = self.df.style
+            df_style.applymap(lambda x: "border: red 1px solid;")
+            df_style.applymap(lambda x: "color: blue")
+            df_style.applymap(lambda x: "border-color: green black", subset=["float1"])
+            df_style.to_excel(writer, sheet_name="Sheet1")
 
 
 class ReadExcel:
 
-    params = ["xlrd", "openpyxl", "odf"]
+    params = ["openpyxl", "odf"]
     param_names = ["engine"]
     fname_excel = "spreadsheet.xlsx"
     fname_odf = "spreadsheet.ods"
@@ -66,8 +92,20 @@ class ReadExcel:
         self._create_odf()
 
     def time_read_excel(self, engine):
-        fname = self.fname_odf if engine == "odf" else self.fname_excel
+        if engine == "odf":
+            fname = self.fname_odf
+        else:
+            fname = self.fname_excel
         read_excel(fname, engine=engine)
+
+
+class ReadExcelNRows(ReadExcel):
+    def time_read_excel(self, engine):
+        if engine == "odf":
+            fname = self.fname_odf
+        else:
+            fname = self.fname_excel
+        read_excel(fname, engine=engine, nrows=10)
 
 
 from ..pandas_vb_common import setup  # noqa: F401 isort:skip

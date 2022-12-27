@@ -53,6 +53,31 @@ need to implement certain operations expected by pandas users (for example
 the algorithm used in, ``Series.str.upper``). That work may be done outside of
 pandas.
 
+Consistent missing value handling
+---------------------------------
+
+Currently, pandas handles missing data differently for different data types. We
+use different types to indicate that a value is missing (``np.nan`` for
+floating-point data, ``np.nan`` or ``None`` for object-dtype data -- typically
+strings or booleans -- with missing values, and ``pd.NaT`` for datetimelike
+data). Integer data cannot store missing data or are cast to float. In addition,
+pandas 1.0 introduced a new missing value sentinel, ``pd.NA``, which is being
+used for the experimental nullable integer, boolean, and string data types.
+
+These different missing values have different behaviors in user-facing
+operations. Specifically, we introduced different semantics for the nullable
+data types for certain operations (e.g. propagating in comparison operations
+instead of comparing as False).
+
+Long term, we want to introduce consistent missing data handling for all data
+types. This includes consistent behavior in all operations (indexing, arithmetic
+operations, comparisons, etc.). There has been discussion of eventually making
+the new semantics the default.
+
+This has been discussed at :issue:`28095` (and
+linked issues), and described in more detail in this
+`design doc <https://hackmd.io/@jorisvandenbossche/Sk0wMeAmB>`__.
+
 Apache Arrow interoperability
 -----------------------------
 
@@ -103,8 +128,51 @@ We propose that it should only work with positional indexing, and the translatio
 to positions should be entirely done at a higher level.
 
 Indexing is a complicated API with many subtleties. This refactor will require care
-and attention. More details are discussed at
-https://github.com/pandas-dev/pandas/wiki/(Tentative)-rules-for-restructuring-indexing-code
+and attention. The following principles should inspire refactoring of indexing code and
+should result on cleaner, simpler, and more performant code.
+
+1. **Label indexing must never involve looking in an axis twice for the same label(s).**
+This implies that any validation step must either:
+
+  * limit validation to general features (e.g. dtype/structure of the key/index), or
+  * reuse the result for the actual indexing.
+
+2. **Indexers must never rely on an explicit call to other indexers.**
+For instance, it is OK to have some internal method of ``.loc`` call some
+internal method of ``__getitem__`` (or of their common base class),
+but never in the code flow of ``.loc`` should ``the_obj[something]`` appear.
+
+3. **Execution of positional indexing must never involve labels** (as currently, sadly, happens).
+That is, the code flow of a getter call (or a setter call in which the right hand side is non-indexed)
+to ``.iloc`` should never involve the axes of the object in any way.
+
+4. **Indexing must never involve accessing/modifying values** (i.e., act on ``._data`` or ``.values``) **more than once.**
+The following steps must hence be clearly decoupled:
+
+  * find positions we need to access/modify on each axis
+  * (if we are accessing) derive the type of object we need to return (dimensionality)
+  * actually access/modify the values
+  * (if we are accessing) construct the return object
+
+5. As a corollary to the decoupling between 4.i and 4.iii, **any code which deals on how data is stored**
+(including any combination of handling multiple dtypes, and sparse storage, categoricals, third-party types)
+**must be independent from code that deals with identifying affected rows/columns**,
+and take place only once step 4.i is completed.
+
+  * In particular, such code should most probably not live in ``pandas/core/indexing.py``
+  * ... and must not depend in any way on the type(s) of axes (e.g. no ``MultiIndex`` special cases)
+
+6. As a corollary to point 1.i, **``Index`` (sub)classes must provide separate methods for any desired validity check of label(s) which does not involve actual lookup**,
+on the one side, and for any required conversion/adaptation/lookup of label(s), on the other.
+
+7. **Use of trial and error should be limited**, and anyway restricted to catch only exceptions
+which are actually expected (typically ``KeyError``).
+
+  * In particular, code should never (intentionally) raise new exceptions in the ``except`` portion of a ``try... exception``
+
+8. **Any code portion which is not specific to setters and getters must be shared**,
+and when small differences in behavior are expected (e.g. getting with ``.loc`` raises for
+missing labels, setting still doesn't), they can be managed with a specific parameter.
 
 Numba-accelerated operations
 ----------------------------
@@ -114,20 +182,6 @@ ways for users to apply their own Numba-jitted functions where pandas accepts us
 (for example, :meth:`Series.apply`, :meth:`DataFrame.apply`, :meth:`DataFrame.applymap`,
 and in groupby and window contexts). This will improve the performance of
 user-defined-functions in these operations by staying within compiled code.
-
-
-Documentation improvements
---------------------------
-
-We'd like to improve the content, structure, and presentation of the pandas documentation.
-Some specific goals include
-
-* Overhaul the HTML theme with a modern, responsive design (:issue:`15556`)
-* Improve the "Getting Started" documentation, designing and writing learning paths
-  for users different backgrounds (e.g. brand new to programming, familiar with
-  other languages like R, already familiar with Python).
-* Improve the overall organization of the documentation and specific subsections
-  of the documentation to make navigation and finding content easier.
 
 Performance monitoring
 ----------------------
@@ -177,3 +231,20 @@ should be notified of the proposal.
 When there's agreement that an implementation
 would be welcome, the roadmap should be updated to include the summary and a
 link to the discussion issue.
+
+Completed items
+---------------
+
+This section records now completed items from the pandas roadmap.
+
+Documentation improvements
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+We improved the pandas documentation
+
+* The pandas community worked with others to build the `pydata-sphinx-theme`_,
+  which is now used for https://pandas.pydata.org/docs/ (:issue:`15556`).
+* :ref:`getting_started` contains a number of resources intended for new
+  pandas users coming from a variety of backgrounds (:issue:`26831`).
+
+.. _pydata-sphinx-theme: https://github.com/pydata/pydata-sphinx-theme

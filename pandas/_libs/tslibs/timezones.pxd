@@ -1,17 +1,23 @@
-from cpython.datetime cimport tzinfo
+from cpython.datetime cimport (
+    datetime,
+    timedelta,
+    tzinfo,
+)
 
-cdef tzinfo utc_pytz
 
-cpdef bint is_utc(object tz)
-cdef bint is_tzlocal(object tz)
+cdef tzinfo utc_stdlib
 
-cdef bint treat_tz_as_pytz(object tz)
+cpdef bint is_utc(tzinfo tz)
+cdef bint is_tzlocal(tzinfo tz)
+cdef bint is_zoneinfo(tzinfo tz)
 
-cpdef bint tz_compare(object start, object end)
-cpdef object get_timezone(object tz)
-cpdef object maybe_get_tz(object tz)
+cdef bint treat_tz_as_pytz(tzinfo tz)
 
-cdef get_utcoffset(tzinfo tz, obj)
-cdef bint is_fixed_offset(tzinfo tz)
+cpdef bint tz_compare(tzinfo start, tzinfo end)
+cpdef object get_timezone(tzinfo tz)
+cpdef tzinfo maybe_get_tz(object tz)
 
-cdef object get_dst_info(object tz)
+cdef timedelta get_utcoffset(tzinfo tz, datetime obj)
+cpdef bint is_fixed_offset(tzinfo tz)
+
+cdef object get_dst_info(tzinfo tz)
