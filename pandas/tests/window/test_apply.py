@@ -55,7 +55,10 @@ def test_rolling_apply_out_of_bounds(engine_and_raw):
 def test_rolling_apply_with_pandas_objects(window):
     # 5071
     df = DataFrame(
-        {"A": np.random.randn(5), "B": np.random.randint(0, 10, size=5)},
+        {
+            "A": np.random.default_rng(2).standard_normal(5),
+            "B": np.random.default_rng(2).integers(0, 10, size=5),
+        },
         index=date_range("20130101", periods=5, freq="s"),
     )
 
@@ -184,7 +187,7 @@ def test_rolling_apply_args_kwargs(args_kwargs):
 
 
 def test_nans(raw):
-    obj = Series(np.random.randn(50))
+    obj = Series(np.random.default_rng(2).standard_normal(50))
     obj[:10] = np.NaN
     obj[-10:] = np.NaN
 
@@ -199,7 +202,7 @@ def test_nans(raw):
     assert not isna(result.iloc[-6])
     assert isna(result.iloc[-5])
 
-    obj2 = Series(np.random.randn(20))
+    obj2 = Series(np.random.default_rng(2).standard_normal(20))
     result = obj2.rolling(10, min_periods=5).apply(f, raw=raw)
     assert isna(result.iloc[3])
     assert notna(result.iloc[4])
@@ -210,7 +213,7 @@ def test_nans(raw):
 
 
 def test_center(raw):
-    obj = Series(np.random.randn(50))
+    obj = Series(np.random.default_rng(2).standard_normal(50))
     obj[:10] = np.NaN
     obj[-10:] = np.NaN
 
@@ -250,7 +253,7 @@ def test_time_rule_series(raw, series):
     prev_date = last_date - 24 * offsets.BDay()
 
     trunc_series = series[::2].truncate(prev_date, last_date)
-    tm.assert_almost_equal(series_result[-1], np.mean(trunc_series))
+    tm.assert_almost_equal(series_result.iloc[-1], np.mean(trunc_series))
 
 
 def test_time_rule_frame(raw, frame):
@@ -321,6 +324,8 @@ def test_center_reindex_frame(raw, frame):
 def test_axis1(raw):
     # GH 45912
     df = DataFrame([1, 2])
-    result = df.rolling(window=1, axis=1).apply(np.sum, raw=raw)
+    msg = "Support for axis=1 in DataFrame.rolling is deprecated"
+    with tm.assert_produces_warning(FutureWarning, match=msg):
+        result = df.rolling(window=1, axis=1).apply(np.sum, raw=raw)
     expected = DataFrame([1.0, 2.0])
     tm.assert_frame_equal(result, expected)

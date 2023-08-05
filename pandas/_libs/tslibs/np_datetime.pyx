@@ -20,6 +20,7 @@ from cpython.object cimport (
 )
 
 import_datetime()
+PandasDateTime_IMPORT
 
 import numpy as np
 
@@ -35,7 +36,7 @@ from numpy cimport (
 from pandas._libs.tslibs.util cimport get_c_string_buf_and_size
 
 
-cdef extern from "src/datetime/np_datetime.h":
+cdef extern from "pandas/datetime/pd_datetime.h":
     int cmp_npy_datetimestruct(npy_datetimestruct *a,
                                npy_datetimestruct *b)
 
@@ -48,18 +49,17 @@ cdef extern from "src/datetime/np_datetime.h":
 
     PyArray_DatetimeMetaData get_datetime_metadata_from_dtype(cnp.PyArray_Descr *dtype)
 
-cdef extern from "src/datetime/np_datetime_strings.h":
     int parse_iso_8601_datetime(const char *str, int len, int want_exc,
                                 npy_datetimestruct *out,
                                 NPY_DATETIMEUNIT *out_bestunit,
                                 int *out_local, int *out_tzoffset,
-                                const char *format, int format_len, int exact)
-
+                                const char *format, int format_len,
+                                FormatRequirement exact)
 
 # ----------------------------------------------------------------------
 # numpy object inspection
 
-cdef npy_datetime get_datetime64_value(object obj) nogil:
+cdef npy_datetime get_datetime64_value(object obj) noexcept nogil:
     """
     returns the int64 value underlying scalar numpy datetime64 object
 
@@ -69,14 +69,14 @@ cdef npy_datetime get_datetime64_value(object obj) nogil:
     return (<PyDatetimeScalarObject*>obj).obval
 
 
-cdef npy_timedelta get_timedelta64_value(object obj) nogil:
+cdef npy_timedelta get_timedelta64_value(object obj) noexcept nogil:
     """
     returns the int64 value underlying scalar numpy timedelta64 object
     """
     return (<PyTimedeltaScalarObject*>obj).obval
 
 
-cdef NPY_DATETIMEUNIT get_datetime64_unit(object obj) nogil:
+cdef NPY_DATETIMEUNIT get_datetime64_unit(object obj) noexcept nogil:
     """
     returns the unit part of the dtype for a numpy datetime64 object.
     """
@@ -158,6 +158,13 @@ cdef bint cmp_scalar(int64_t lhs, int64_t rhs, int op) except -1:
 class OutOfBoundsDatetime(ValueError):
     """
     Raised when the datetime is outside the range that can be represented.
+
+    Examples
+    --------
+    >>> pd.to_datetime("08335394550")
+    Traceback (most recent call last):
+    OutOfBoundsDatetime: Parsing "08335394550" to datetime overflows,
+    at position 0
     """
     pass
 
@@ -167,6 +174,13 @@ class OutOfBoundsTimedelta(ValueError):
     Raised when encountering a timedelta value that cannot be represented.
 
     Representation should be within a timedelta64[ns].
+
+    Examples
+    --------
+    >>> pd.date_range(start="1/1/1700", freq="B", periods=100000)
+    Traceback (most recent call last):
+    OutOfBoundsTimedelta: Cannot cast 139999 days 00:00:00
+    to unit='ns' without overflow.
     """
     # Timedelta analogue to OutOfBoundsDatetime
     pass
@@ -229,7 +243,7 @@ def py_td64_to_tdstruct(int64_t td64, NPY_DATETIMEUNIT unit):
     return tds  # <- returned as a dict to python
 
 
-cdef void pydatetime_to_dtstruct(datetime dt, npy_datetimestruct *dts):
+cdef void pydatetime_to_dtstruct(datetime dt, npy_datetimestruct *dts) noexcept:
     if PyDateTime_CheckExact(dt):
         dts.year = PyDateTime_GET_YEAR(dt)
     else:
@@ -256,7 +270,7 @@ cdef int64_t pydatetime_to_dt64(datetime val,
     return npy_datetimestruct_to_datetime(reso, dts)
 
 
-cdef void pydate_to_dtstruct(date val, npy_datetimestruct *dts):
+cdef void pydate_to_dtstruct(date val, npy_datetimestruct *dts) noexcept:
     dts.year = PyDateTime_GET_YEAR(val)
     dts.month = PyDateTime_GET_MONTH(val)
     dts.day = PyDateTime_GET_DAY(val)
@@ -286,17 +300,20 @@ cdef int string_to_dts(
         const char* buf
         Py_ssize_t format_length
         const char* format_buf
+        FormatRequirement format_requirement
 
     buf = get_c_string_buf_and_size(val, &length)
     if format is None:
         format_buf = b""
         format_length = 0
-        exact = False
+        format_requirement = INFER_FORMAT
     else:
         format_buf = get_c_string_buf_and_size(format, &format_length)
+        format_requirement = <FormatRequirement>exact
     return parse_iso_8601_datetime(buf, length, want_exc,
                                    dts, out_bestunit, out_local, out_tzoffset,
-                                   format_buf, format_length, exact)
+                                   format_buf, format_length,
+                                   format_requirement)
 
 
 cpdef ndarray astype_overflowsafe(
@@ -304,6 +321,7 @@ cpdef ndarray astype_overflowsafe(
     cnp.dtype dtype,
     bint copy=True,
     bint round_ok=True,
+    bint is_coerce=False,
 ):
     """
     Convert an ndarray with datetime64[X] to datetime64[Y]
@@ -381,7 +399,9 @@ cpdef ndarray astype_overflowsafe(
             try:
                 check_dts_bounds(&dts, to_unit)
             except OutOfBoundsDatetime as err:
-                if is_td:
+                if is_coerce:
+                    new_value = NPY_DATETIME_NAT
+                elif is_td:
                     from_abbrev = np.datetime_data(values.dtype)[0]
                     np_val = np.timedelta64(value, from_abbrev)
                     msg = (
@@ -391,8 +411,8 @@ cpdef ndarray astype_overflowsafe(
                     raise OutOfBoundsTimedelta(msg) from err
                 else:
                     raise
-
-            new_value = npy_datetimestruct_to_datetime(to_unit, &dts)
+            else:
+                new_value = npy_datetimestruct_to_datetime(to_unit, &dts)
 
         # Analogous to: iresult[i] = new_value
         (<int64_t*>cnp.PyArray_MultiIter_DATA(mi, 0))[0] = new_value
@@ -413,7 +433,7 @@ def compare_mismatched_resolutions(ndarray left, ndarray right, op):
     array([ True])
     """
 
-    if left.dtype.kind != right.dtype.kind or left.dtype.kind not in ["m", "M"]:
+    if left.dtype.kind != right.dtype.kind or left.dtype.kind not in "mM":
         raise ValueError("left and right must both be timedelta64 or both datetime64")
 
     cdef:
@@ -564,6 +584,8 @@ cdef int64_t get_conversion_factor(
         return 1000 * get_conversion_factor(NPY_DATETIMEUNIT.NPY_FR_fs, to_unit)
     elif from_unit == NPY_DATETIMEUNIT.NPY_FR_fs:
         return 1000 * get_conversion_factor(NPY_DATETIMEUNIT.NPY_FR_as, to_unit)
+    else:
+        raise ValueError("Converting from M or Y units is not supported.")
 
 
 cdef int64_t convert_reso(

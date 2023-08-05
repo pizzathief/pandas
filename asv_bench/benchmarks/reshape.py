@@ -59,7 +59,6 @@ class SimpleReshape:
 
 
 class ReshapeExtensionDtype:
-
     params = ["datetime64[ns, US/Pacific]", "Period[s]"]
     param_names = ["dtype"]
 
@@ -94,8 +93,26 @@ class ReshapeExtensionDtype:
         self.df.T
 
 
-class Unstack:
+class ReshapeMaskedArrayDtype(ReshapeExtensionDtype):
+    params = ["Int64", "Float64"]
+    param_names = ["dtype"]
 
+    def setup(self, dtype):
+        lev = pd.Index(list("ABCDEFGHIJ"))
+        ri = pd.Index(range(1000))
+        mi = MultiIndex.from_product([lev, ri], names=["foo", "bar"])
+
+        values = np.random.randn(10_000).astype(int)
+
+        ser = pd.Series(values, dtype=dtype, index=mi)
+        df = ser.unstack("bar")
+        # roundtrips -> df.stack().equals(ser)
+
+        self.ser = ser
+        self.df = df
+
+
+class Unstack:
     params = ["int", "category"]
 
     def setup(self, dtype):
@@ -201,7 +218,7 @@ class PivotTable:
 
     def time_pivot_table_categorical(self):
         self.df2.pivot_table(
-            index="col1", values="col3", columns="col2", aggfunc=np.sum, fill_value=0
+            index="col1", values="col3", columns="col2", aggfunc="sum", fill_value=0
         )
 
     def time_pivot_table_categorical_observed(self):
@@ -209,7 +226,7 @@ class PivotTable:
             index="col1",
             values="col3",
             columns="col2",
-            aggfunc=np.sum,
+            aggfunc="sum",
             fill_value=0,
             observed=True,
         )
@@ -311,7 +328,6 @@ class Explode:
     params = [[100, 1000, 10000], [3, 5, 10]]
 
     def setup(self, n_rows, max_list_length):
-
         data = [np.arange(np.random.randint(max_list_length)) for _ in range(n_rows)]
         self.series = pd.Series(data)
 

@@ -228,7 +228,6 @@ class TestMelt:
         tm.assert_frame_equal(result14, expected14)
 
     def test_custom_var_and_value_name(self, df, value_name, var_name):
-
         result15 = df.melt(var_name=var_name, value_name=value_name)
         assert result15.columns.tolist() == ["var", "val"]
 
@@ -323,7 +322,9 @@ class TestMelt:
         # attempted with column names absent from the dataframe
 
         # Generate data
-        df = DataFrame(np.random.randn(5, 4), columns=list("abcd"))
+        df = DataFrame(
+            np.random.default_rng(2).standard_normal((5, 4)), columns=list("abcd")
+        )
 
         # Try to melt with missing `value_vars` column name
         msg = "The following '{Var}' are not present in the DataFrame: {Col}"
@@ -434,6 +435,26 @@ class TestMelt:
             {
                 "variable": ["a", "a", "b", "b"],
                 "value": pd.Series([1, 2, 3, 4], dtype=dtype),
+            }
+        )
+        tm.assert_frame_equal(result, expected)
+
+    def test_melt_ea_columns(self):
+        # GH 54297
+        df = DataFrame(
+            {
+                "A": {0: "a", 1: "b", 2: "c"},
+                "B": {0: 1, 1: 3, 2: 5},
+                "C": {0: 2, 1: 4, 2: 6},
+            }
+        )
+        df.columns = df.columns.astype("string[python]")
+        result = df.melt(id_vars=["A"], value_vars=["B"])
+        expected = DataFrame(
+            {
+                "A": list("abc"),
+                "variable": pd.Series(["B"] * 3, dtype="string[python]"),
+                "value": [1, 3, 5],
             }
         )
         tm.assert_frame_equal(result, expected)
@@ -669,8 +690,7 @@ class TestLreshape:
 
 class TestWideToLong:
     def test_simple(self):
-        np.random.seed(123)
-        x = np.random.randn(3)
+        x = np.random.default_rng(2).standard_normal(3)
         df = DataFrame(
             {
                 "A1970": {0: "a", 1: "b", 2: "c"},
@@ -705,8 +725,8 @@ class TestWideToLong:
 
     def test_separating_character(self):
         # GH14779
-        np.random.seed(123)
-        x = np.random.randn(3)
+
+        x = np.random.default_rng(2).standard_normal(3)
         df = DataFrame(
             {
                 "A.1970": {0: "a", 1: "b", 2: "c"},
@@ -730,8 +750,7 @@ class TestWideToLong:
         tm.assert_frame_equal(result, expected)
 
     def test_escapable_characters(self):
-        np.random.seed(123)
-        x = np.random.randn(3)
+        x = np.random.default_rng(2).standard_normal(3)
         df = DataFrame(
             {
                 "A(quarterly)1970": {0: "a", 1: "b", 2: "c"},
@@ -831,7 +850,7 @@ class TestWideToLong:
             "A": [],
             "B": [],
         }
-        expected = DataFrame(exp_data).astype({"year": "int"})
+        expected = DataFrame(exp_data).astype({"year": np.int64})
         expected = expected.set_index(["id", "year"])[
             ["X", "A2010", "A2011", "B2010", "A", "B"]
         ]
@@ -894,7 +913,7 @@ class TestWideToLong:
             "A": [],
             "B": [],
         }
-        expected = DataFrame(exp_data).astype({"year": "int"})
+        expected = DataFrame(exp_data).astype({"year": np.int64})
 
         expected = expected.set_index(["id", "year"])
         expected.index = expected.index.set_levels([0, 1], level=0)

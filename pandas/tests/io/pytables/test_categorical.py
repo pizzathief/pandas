@@ -14,19 +14,11 @@ from pandas.tests.io.pytables.common import (
     ensure_clean_store,
 )
 
-pytestmark = [
-    pytest.mark.single_cpu,
-    # pytables https://github.com/PyTables/PyTables/issues/822
-    pytest.mark.filterwarnings(
-        "ignore:a closed node found in the registry:UserWarning"
-    ),
-]
+pytestmark = pytest.mark.single_cpu
 
 
 def test_categorical(setup_path):
-
     with ensure_clean_store(setup_path) as store:
-
         # Basic
         _maybe_remove(store, "s")
         s = Series(
@@ -147,7 +139,6 @@ def test_categorical(setup_path):
 
 
 def test_categorical_conversion(tmp_path, setup_path):
-
     # GH13322
     # Check that read_hdf with categorical columns doesn't return rows if
     # where criteria isn't met.

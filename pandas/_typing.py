@@ -1,25 +1,25 @@
 from __future__ import annotations
 
+from collections.abc import (
+    Hashable,
+    Iterator,
+    Mapping,
+    Sequence,
+)
 from datetime import (
     datetime,
     timedelta,
     tzinfo,
 )
 from os import PathLike
+import sys
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Dict,
-    Hashable,
-    Iterator,
-    List,
     Literal,
-    Mapping,
     Optional,
     Protocol,
-    Sequence,
-    Tuple,
     Type as type_t,
     TypeVar,
     Union,
@@ -44,6 +44,10 @@ if TYPE_CHECKING:
     from pandas.core.dtypes.dtypes import ExtensionDtype
 
     from pandas import Interval
+    from pandas.arrays import (
+        DatetimeArray,
+        TimedeltaArray,
+    )
     from pandas.core.arrays.base import ExtensionArray
     from pandas.core.frame import DataFrame
     from pandas.core.generic import NDFrame
@@ -79,8 +83,19 @@ if TYPE_CHECKING:
     # Name "npt._ArrayLikeInt_co" is not defined  [name-defined]
     NumpySorter = Optional[npt._ArrayLikeInt_co]  # type: ignore[name-defined]
 
+    if sys.version_info >= (3, 10):
+        from typing import TypeGuard  # pyright: ignore[reportUnusedImport]
+    else:
+        from typing_extensions import TypeGuard  # pyright: ignore[reportUnusedImport]
+
+    if sys.version_info >= (3, 11):
+        from typing import Self
+    else:
+        from typing_extensions import Self  # pyright: ignore[reportUnusedImport]
 else:
     npt: Any = None
+    Self: Any = None
+    TypeGuard: Any = None
 
 HashableT = TypeVar("HashableT", bound=Hashable)
 
@@ -88,6 +103,14 @@ HashableT = TypeVar("HashableT", bound=Hashable)
 
 ArrayLike = Union["ExtensionArray", np.ndarray]
 AnyArrayLike = Union[ArrayLike, "Index", "Series"]
+TimeArrayLike = Union["DatetimeArray", "TimedeltaArray"]
+
+# list-like
+
+# Cannot use `Sequence` because a string is a sequence, and we don't want to
+# accept that.  Could refine if https://github.com/python/typing/issues/256 is
+# resolved to differentiate between Sequence[str] and str
+ListLike = Union[AnyArrayLike, list, range]
 
 # scalars
 
@@ -108,6 +131,8 @@ TimedeltaConvertibleTypes = Union[
 ]
 Timezone = Union[str, tzinfo]
 
+ToTimestampHow = Literal["s", "e", "start", "end"]
+
 # NDFrameT is stricter and ensures that the same subclass of NDFrame always is
 # used. E.g. `def func(a: NDFrameT) -> NDFrameT: ...` means that if a
 # Series is passed into a function, a Series is always returned and if a DataFrame is
@@ -120,16 +145,16 @@ AxisInt = int
 Axis = Union[AxisInt, Literal["index", "columns", "rows"]]
 IndexLabel = Union[Hashable, Sequence[Hashable]]
 Level = Hashable
-Shape = Tuple[int, ...]
-Suffixes = Tuple[Optional[str], Optional[str]]
+Shape = tuple[int, ...]
+Suffixes = tuple[Optional[str], Optional[str]]
 Ordered = Optional[bool]
-JSONSerializable = Optional[Union[PythonScalar, List, Dict]]
+JSONSerializable = Optional[Union[PythonScalar, list, dict]]
 Frequency = Union[str, "BaseOffset"]
-Axes = Union[AnyArrayLike, List, range]
+Axes = ListLike
 
 RandomState = Union[
     int,
-    ArrayLike,
+    np.ndarray,
     np.random.Generator,
     np.random.BitGenerator,
     np.random.RandomState,
@@ -140,15 +165,15 @@ NpDtype = Union[str, np.dtype, type_t[Union[str, complex, bool, object]]]
 Dtype = Union["ExtensionDtype", NpDtype]
 AstypeArg = Union["ExtensionDtype", "npt.DTypeLike"]
 # DtypeArg specifies all allowable dtypes in a functions its dtype argument
-DtypeArg = Union[Dtype, Dict[Hashable, Dtype]]
+DtypeArg = Union[Dtype, dict[Hashable, Dtype]]
 DtypeObj = Union[np.dtype, "ExtensionDtype"]
 
 # converters
-ConvertersArg = Dict[Hashable, Callable[[Dtype], Dtype]]
+ConvertersArg = dict[Hashable, Callable[[Dtype], Dtype]]
 
 # parse_dates
 ParseDatesArg = Union[
-    bool, List[Hashable], List[List[Hashable]], Dict[Hashable, List[Hashable]]
+    bool, list[Hashable], list[list[Hashable]], dict[Hashable, list[Hashable]]
 ]
 
 # For functions like rename that convert one label to another
@@ -169,10 +194,10 @@ IndexKeyFunc = Optional[Callable[["Index"], Union["Index", AnyArrayLike]]]
 
 # types of `func` kwarg for DataFrame.aggregate and Series.aggregate
 AggFuncTypeBase = Union[Callable, str]
-AggFuncTypeDict = Dict[Hashable, Union[AggFuncTypeBase, List[AggFuncTypeBase]]]
+AggFuncTypeDict = dict[Hashable, Union[AggFuncTypeBase, list[AggFuncTypeBase]]]
 AggFuncType = Union[
     AggFuncTypeBase,
-    List[AggFuncTypeBase],
+    list[AggFuncTypeBase],
     AggFuncTypeDict,
 ]
 AggObjType = Union[
@@ -260,18 +285,18 @@ class ReadCsvBuffer(ReadBuffer[AnyStr_co], Protocol):
 FilePath = Union[str, "PathLike[str]"]
 
 # for arbitrary kwargs passed during reading/writing files
-StorageOptions = Optional[Dict[str, Any]]
+StorageOptions = Optional[dict[str, Any]]
 
 
 # compression keywords and compression
-CompressionDict = Dict[str, Any]
+CompressionDict = dict[str, Any]
 CompressionOptions = Optional[
     Union[Literal["infer", "gzip", "bz2", "zip", "xz", "zstd", "tar"], CompressionDict]
 ]
 
 # types in DataFrameFormatter
 FormattersType = Union[
-    List[Callable], Tuple[Callable, ...], Mapping[Union[str, int], Callable]
+    list[Callable], tuple[Callable, ...], Mapping[Union[str, int], Callable]
 ]
 ColspaceType = Mapping[Hashable, Union[str, int]]
 FloatFormatType = Union[str, Callable, "EngFormatter"]
@@ -281,6 +306,26 @@ ColspaceArgType = Union[
 
 # Arguments for fillna()
 FillnaOptions = Literal["backfill", "bfill", "ffill", "pad"]
+InterpolateOptions = Literal[
+    "linear",
+    "time",
+    "index",
+    "values",
+    "nearest",
+    "zero",
+    "slinear",
+    "quadratic",
+    "cubic",
+    "barycentric",
+    "polynomial",
+    "krogh",
+    "piecewise_polynomial",
+    "spline",
+    "pchip",
+    "akima",
+    "cubicspline",
+    "from_derivatives",
+]
 
 # internals
 Manager = Union[
@@ -301,9 +346,9 @@ Manager2D = Union["ArrayManager", "BlockManager"]
 # https://bugs.python.org/issue41810
 # Using List[int] here rather than Sequence[int] to disallow tuples.
 ScalarIndexer = Union[int, np.integer]
-SequenceIndexer = Union[slice, List[int], np.ndarray]
+SequenceIndexer = Union[slice, list[int], np.ndarray]
 PositionalIndexer = Union[ScalarIndexer, SequenceIndexer]
-PositionalIndexerTuple = Tuple[PositionalIndexer, PositionalIndexer]
+PositionalIndexerTuple = tuple[PositionalIndexer, PositionalIndexer]
 PositionalIndexer2D = Union[PositionalIndexer, PositionalIndexerTuple]
 if TYPE_CHECKING:
     TakeIndexer = Union[Sequence[int], Sequence[np.integer], npt.NDArray[np.integer]]
@@ -318,6 +363,9 @@ WindowingRankType = Literal["average", "min", "max"]
 
 # read_csv engines
 CSVEngine = Literal["c", "python", "pyarrow", "python-fwf"]
+
+# read_json engines
+JSONEngine = Literal["ujson", "pyarrow"]
 
 # read_xml parsers
 XMLParsers = Literal["lxml", "etree"]
@@ -334,6 +382,9 @@ DateTimeErrorChoices = Union[IgnoreRaise, Literal["coerce"]]
 SortKind = Literal["quicksort", "mergesort", "heapsort", "stable"]
 NaPosition = Literal["first", "last"]
 
+# Arguments for nsmalles and n_largest
+NsmallestNlargestKeep = Literal["first", "last", "all"]
+
 # quantile interpolation
 QuantileInterpolation = Literal["linear", "lower", "higher", "midpoint", "nearest"]
 
@@ -345,9 +396,32 @@ AnyAll = Literal["any", "all"]
 
 # merge
 MergeHow = Literal["left", "right", "inner", "outer", "cross"]
+MergeValidate = Literal[
+    "one_to_one",
+    "1:1",
+    "one_to_many",
+    "1:m",
+    "many_to_one",
+    "m:1",
+    "many_to_many",
+    "m:m",
+]
 
 # join
 JoinHow = Literal["left", "right", "inner", "outer"]
+JoinValidate = Literal[
+    "one_to_one",
+    "1:1",
+    "one_to_many",
+    "1:m",
+    "many_to_one",
+    "m:1",
+    "many_to_many",
+    "m:m",
+]
+
+# reindex
+ReindexMethod = Union[FillnaOptions, Literal["nearest"]]
 
 MatplotlibColor = Union[str, Sequence[float]]
 TimeGrouperOrigin = Union[
@@ -362,3 +436,33 @@ CorrelationMethod = Union[
     Literal["pearson", "kendall", "spearman"], Callable[[np.ndarray, np.ndarray], float]
 ]
 AlignJoin = Literal["outer", "inner", "left", "right"]
+DtypeBackend = Literal["pyarrow", "numpy_nullable"]
+
+TimeUnit = Literal["s", "ms", "us", "ns"]
+OpenFileErrors = Literal[
+    "strict",
+    "ignore",
+    "replace",
+    "surrogateescape",
+    "xmlcharrefreplace",
+    "backslashreplace",
+    "namereplace",
+]
+
+# update
+UpdateJoin = Literal["left"]
+
+# applymap
+NaAction = Literal["ignore"]
+
+# from_dict
+FromDictOrient = Literal["columns", "index", "tight"]
+
+# to_gbc
+ToGbqIfexist = Literal["fail", "replace", "append"]
+
+# to_stata
+ToStataByteorder = Literal[">", "<", "little", "big"]
+
+# ExcelWriter
+ExcelWriterIfSheetExists = Literal["error", "new", "replace", "overlay"]

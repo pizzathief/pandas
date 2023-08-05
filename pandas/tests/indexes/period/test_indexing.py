@@ -20,10 +20,6 @@ from pandas import (
     period_range,
 )
 import pandas._testing as tm
-from pandas.core.api import (
-    Float64Index,
-    Int64Index,
-)
 
 dti4 = date_range("2016-01-01", periods=4)
 dti = dti4[:-1]
@@ -114,7 +110,7 @@ class TestGetItem:
 
     def test_getitem_partial(self):
         rng = period_range("2007-01", periods=50, freq="M")
-        ts = Series(np.random.randn(len(rng)), rng)
+        ts = Series(np.random.default_rng(2).standard_normal(len(rng)), rng)
 
         with pytest.raises(KeyError, match=r"^'2006'$"):
             ts["2006"]
@@ -197,7 +193,7 @@ class TestGetItem:
                 with pytest.raises(IndexError, match="only integers, slices"):
                     idx[val]
 
-            ser = Series(np.random.rand(len(idx)), index=idx)
+            ser = Series(np.random.default_rng(2).random(len(idx)), index=idx)
             tm.assert_series_equal(ser["2013/01/01 10:00"], ser[3600:3660])
             tm.assert_series_equal(ser["2013/01/01 9H"], ser[:3600])
             for d in ["2013/01/01", "2013/01", "2013"]:
@@ -223,14 +219,13 @@ class TestGetItem:
             "2013/02/01 09:00",
         ]
         for val in values:
-
             # GH7116
             # these show deprecations as we are trying
             # to slice with non-integer indexers
             with pytest.raises(IndexError, match="only integers, slices"):
                 idx[val]
 
-        ser = Series(np.random.rand(len(idx)), index=idx)
+        ser = Series(np.random.default_rng(2).random(len(idx)), index=idx)
         tm.assert_series_equal(ser["2013/01"], ser[0:31])
         tm.assert_series_equal(ser["2013/02"], ser[31:59])
         tm.assert_series_equal(ser["2014"], ser[365:])
@@ -574,7 +569,7 @@ class TestWhere:
         mask = notna(i2)
 
         result = pi.where(mask, i2.asi8)
-        expected = pd.Index([NaT.value, NaT.value] + tail, dtype=object)
+        expected = pd.Index([NaT._value, NaT._value] + tail, dtype=object)
         assert isinstance(expected[0], int)
         tm.assert_index_equal(result, expected)
 
@@ -778,8 +773,8 @@ class TestContains:
         rng = period_range("2007-01", freq="M", periods=10)
 
         assert Period("2007-01", freq="M") in rng
-        assert not Period("2007-01", freq="D") in rng
-        assert not Period("2007-01", freq="2M") in rng
+        assert Period("2007-01", freq="D") not in rng
+        assert Period("2007-01", freq="2M") not in rng
 
     def test_contains_nat(self):
         # see gh-13582
@@ -806,10 +801,10 @@ class TestAsOfLocs:
 
         msg = "must be DatetimeIndex or PeriodIndex"
         with pytest.raises(TypeError, match=msg):
-            pi.asof_locs(Int64Index(pi.asi8), mask)
+            pi.asof_locs(pd.Index(pi.asi8, dtype=np.int64), mask)
 
         with pytest.raises(TypeError, match=msg):
-            pi.asof_locs(Float64Index(pi.asi8), mask)
+            pi.asof_locs(pd.Index(pi.asi8, dtype=np.float64), mask)
 
         with pytest.raises(TypeError, match=msg):
             # TimedeltaIndex

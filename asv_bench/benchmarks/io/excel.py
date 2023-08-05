@@ -32,7 +32,6 @@ def _generate_dataframe():
 
 
 class WriteExcel:
-
     params = ["openpyxl", "xlsxwriter"]
     param_names = ["engine"]
 
@@ -58,14 +57,13 @@ class WriteExcelStyled:
         bio.seek(0)
         with ExcelWriter(bio, engine=engine) as writer:
             df_style = self.df.style
-            df_style.applymap(lambda x: "border: red 1px solid;")
-            df_style.applymap(lambda x: "color: blue")
-            df_style.applymap(lambda x: "border-color: green black", subset=["float1"])
+            df_style.map(lambda x: "border: red 1px solid;")
+            df_style.map(lambda x: "color: blue")
+            df_style.map(lambda x: "border-color: green black", subset=["float1"])
             df_style.to_excel(writer, sheet_name="Sheet1")
 
 
 class ReadExcel:
-
     params = ["openpyxl", "odf"]
     param_names = ["engine"]
     fname_excel = "spreadsheet.xlsx"

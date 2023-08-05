@@ -26,9 +26,6 @@ from pandas.tests.io.pytables.common import (
 )
 from pandas.util import _test_decorators as td
 
-_default_compressor = "blosc"
-
-
 pytestmark = pytest.mark.single_cpu
 
 
@@ -56,11 +53,8 @@ def test_conv_read_write():
 
 
 def test_long_strings(setup_path):
-
     # GH6166
-    df = DataFrame(
-        {"a": tm.rands_array(100, size=10)}, index=tm.rands_array(100, size=10)
-    )
+    df = DataFrame({"a": tm.makeStringIndex(10)}, index=tm.makeStringIndex(10))
 
     with ensure_clean_store(setup_path) as store:
         store.append("df", df, data_columns=["a"])
@@ -70,7 +64,6 @@ def test_long_strings(setup_path):
 
 
 def test_api(tmp_path, setup_path):
-
     # GH4584
     # API issue when to_hdf doesn't accept append AND format args
     path = tmp_path / setup_path
@@ -117,7 +110,6 @@ def test_api_2(tmp_path, setup_path):
     tm.assert_frame_equal(read_hdf(path, "df"), df)
 
     with ensure_clean_store(setup_path) as store:
-
         df = tm.makeDataFrame()
 
         _maybe_remove(store, "df")
@@ -173,7 +165,6 @@ def test_api_invalid(tmp_path, setup_path):
 
 
 def test_get(setup_path):
-
     with ensure_clean_store(setup_path) as store:
         store["a"] = tm.makeTimeSeries()
         left = store.get("a")
@@ -190,12 +181,11 @@ def test_get(setup_path):
 
 def test_put_integer(setup_path):
     # non-date, non-string index
-    df = DataFrame(np.random.randn(50, 100))
+    df = DataFrame(np.random.default_rng(2).standard_normal((50, 100)))
     _check_roundtrip(df, tm.assert_frame_equal, setup_path)
 
 
 def test_table_values_dtypes_roundtrip(setup_path):
-
     with ensure_clean_store(setup_path) as store:
         df1 = DataFrame({"a": [1, 2, 3]}, dtype="f8")
         store.append("df_f8", df1)
@@ -222,12 +212,12 @@ def test_table_values_dtypes_roundtrip(setup_path):
         df1 = DataFrame(np.array([[1], [2], [3]], dtype="f4"), columns=["A"])
         store.append("df_f4", df1)
         tm.assert_series_equal(df1.dtypes, store["df_f4"].dtypes)
-        assert df1.dtypes[0] == "float32"
+        assert df1.dtypes.iloc[0] == "float32"
 
         # check with mixed dtypes
         df1 = DataFrame(
             {
-                c: Series(np.random.randint(5), dtype=c)
+                c: Series(np.random.default_rng(2).integers(5), dtype=c)
                 for c in ["float32", "float64", "int32", "int64", "int16", "int8"]
             }
         )
@@ -252,7 +242,8 @@ def test_table_values_dtypes_roundtrip(setup_path):
                 "int64": 1,
                 "object": 1,
                 "datetime64[ns]": 2,
-            }
+            },
+            name="count",
         )
         result = result.sort_index()
         expected = expected.sort_index()
@@ -261,7 +252,6 @@ def test_table_values_dtypes_roundtrip(setup_path):
 
 @pytest.mark.filterwarnings("ignore::pandas.errors.PerformanceWarning")
 def test_series(setup_path):
-
     s = tm.makeStringSeries()
     _check_roundtrip(s, tm.assert_series_equal, path=setup_path)
 
@@ -278,19 +268,17 @@ def test_series(setup_path):
 
 
 def test_float_index(setup_path):
-
     # GH #454
-    index = np.random.randn(10)
-    s = Series(np.random.randn(10), index=index)
+    index = np.random.default_rng(2).standard_normal(10)
+    s = Series(np.random.default_rng(2).standard_normal(10), index=index)
     _check_roundtrip(s, tm.assert_series_equal, path=setup_path)
 
 
 def test_tuple_index(setup_path):
-
     # GH #492
     col = np.arange(10)
     idx = [(0.0, 1.0), (2.0, 3.0), (4.0, 5.0)]
-    data = np.random.randn(30).reshape((3, 10))
+    data = np.random.default_rng(2).standard_normal(30).reshape((3, 10))
     DF = DataFrame(data, index=idx, columns=col)
 
     with catch_warnings(record=True):
@@ -301,7 +289,7 @@ def test_tuple_index(setup_path):
 @pytest.mark.filterwarnings("ignore::pandas.errors.PerformanceWarning")
 def test_index_types(setup_path):
     with catch_warnings(record=True):
-        values = np.random.randn(2)
+        values = np.random.default_rng(2).standard_normal(2)
 
         func = lambda lhs, rhs: tm.assert_series_equal(lhs, rhs, check_index_type=True)
 
@@ -349,29 +337,28 @@ def test_index_types(setup_path):
         _check_roundtrip(ser, func, path=setup_path)
 
 
-def test_timeseries_preepoch(setup_path):
-
+def test_timeseries_preepoch(setup_path, request):
     dr = bdate_range("1/1/1940", "1/1/1960")
-    ts = Series(np.random.randn(len(dr)), index=dr)
+    ts = Series(np.random.default_rng(2).standard_normal(len(dr)), index=dr)
     try:
         _check_roundtrip(ts, tm.assert_series_equal, path=setup_path)
     except OverflowError:
         if is_platform_windows():
-            pytest.xfail("known failure on some windows platforms")
-        else:
-            raise
+            request.node.add_marker(
+                pytest.mark.xfail("known failure on some windows platforms")
+            )
+        raise
 
 
 @pytest.mark.parametrize(
     "compression", [False, pytest.param(True, marks=td.skip_if_windows)]
 )
 def test_frame(compression, setup_path):
-
     df = tm.makeDataFrame()
 
     # put in some random NAs
-    df.values[0, 0] = np.nan
-    df.values[5, 3] = np.nan
+    df.iloc[0, 0] = np.nan
+    df.iloc[5, 3] = np.nan
 
     _check_roundtrip_table(
         df, tm.assert_frame_equal, path=setup_path, compression=compression
@@ -387,7 +374,7 @@ def test_frame(compression, setup_path):
 
     with ensure_clean_store(setup_path) as store:
         # not consolidated
-        df["foo"] = np.random.randn(len(df))
+        df["foo"] = np.random.default_rng(2).standard_normal(len(df))
         store["df"] = df
         recons = store["df"]
         assert recons._mgr.is_consolidated()
@@ -417,9 +404,10 @@ def test_empty_series(dtype, setup_path):
 
 
 def test_can_serialize_dates(setup_path):
-
     rng = [x.date() for x in bdate_range("1/1/2000", "1/30/2000")]
-    frame = DataFrame(np.random.randn(len(rng), 4), index=rng)
+    frame = DataFrame(
+        np.random.default_rng(2).standard_normal((len(rng), 4)), index=rng
+    )
 
     _check_roundtrip(frame, tm.assert_frame_equal, path=setup_path)
 
@@ -486,10 +474,9 @@ def test_store_mixed(compression, setup_path):
 
 
 def _check_roundtrip(obj, comparator, path, compression=False, **kwargs):
-
     options = {}
     if compression:
-        options["complib"] = _default_compressor
+        options["complib"] = "blosc"
 
     with ensure_clean_store(path, "w", **options) as store:
         store["obj"] = obj
@@ -500,7 +487,7 @@ def _check_roundtrip(obj, comparator, path, compression=False, **kwargs):
 def _check_roundtrip_table(obj, comparator, path, compression=False):
     options = {}
     if compression:
-        options["complib"] = _default_compressor
+        options["complib"] = "blosc"
 
     with ensure_clean_store(path, "w", **options) as store:
         store.put("obj", obj, format="table")
@@ -510,13 +497,15 @@ def _check_roundtrip_table(obj, comparator, path, compression=False):
 
 
 def test_unicode_index(setup_path):
-
     unicode_values = ["\u03c3", "\u03c3\u03c3"]
 
     # PerformanceWarning
     with catch_warnings(record=True):
         simplefilter("ignore", pd.errors.PerformanceWarning)
-        s = Series(np.random.randn(len(unicode_values)), unicode_values)
+        s = Series(
+            np.random.default_rng(2).standard_normal(len(unicode_values)),
+            unicode_values,
+        )
         _check_roundtrip(s, tm.assert_series_equal, path=setup_path)
 
 
@@ -537,7 +526,6 @@ def test_unicode_longer_encoded(setup_path):
 
 
 def test_store_datetime_mixed(setup_path):
-
     df = DataFrame({"a": [1, 2, 3], "b": [1.0, 2.0, 3.0], "c": ["a", "b", "c"]})
     ts = tm.makeTimeSeries()
     df["d"] = ts.index[:3]

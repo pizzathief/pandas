@@ -11,6 +11,7 @@ import re
 import numpy as np
 import pytest
 
+from pandas.compat._constants import PY310
 import pandas.util._test_decorators as td
 
 import pandas as pd
@@ -269,8 +270,18 @@ class TestRoundTrip:
             tm.assert_frame_equal(df, res)
 
             date_parser = lambda x: datetime.strptime(x, "%m/%d/%Y")
+            with tm.assert_produces_warning(
+                FutureWarning, match="use 'date_format' instead"
+            ):
+                res = pd.read_excel(
+                    pth,
+                    parse_dates=["date_strings"],
+                    date_parser=date_parser,
+                    index_col=0,
+                )
+            tm.assert_frame_equal(df, res)
             res = pd.read_excel(
-                pth, parse_dates=["date_strings"], date_parser=date_parser, index_col=0
+                pth, parse_dates=["date_strings"], date_format="%m/%d/%Y", index_col=0
             )
             tm.assert_frame_equal(df, res)
 
@@ -329,7 +340,6 @@ class TestRoundTrip:
 @pytest.mark.usefixtures("set_engine")
 class TestExcelWriter:
     def test_excel_sheet_size(self, path):
-
         # GH 26080
         breaking_row_count = 2**20 + 1
         breaking_col_count = 2**14 + 1
@@ -347,7 +357,7 @@ class TestExcelWriter:
             col_df.to_excel(path)
 
     def test_excel_sheet_by_name_raise(self, path):
-        gt = DataFrame(np.random.randn(10, 2))
+        gt = DataFrame(np.random.default_rng(2).standard_normal((10, 2)))
         gt.to_excel(path)
 
         with ExcelFile(path) as xl:
@@ -455,7 +465,9 @@ class TestExcelWriter:
     def test_int_types(self, np_type, path):
         # Test np.int values read come back as int
         # (rather than float which is Excel's format).
-        df = DataFrame(np.random.randint(-10, 10, size=(10, 2)), dtype=np_type)
+        df = DataFrame(
+            np.random.default_rng(2).integers(-10, 10, size=(10, 2)), dtype=np_type
+        )
         df.to_excel(path, "test1")
 
         with ExcelFile(path) as reader:
@@ -470,7 +482,7 @@ class TestExcelWriter:
     @pytest.mark.parametrize("np_type", [np.float16, np.float32, np.float64])
     def test_float_types(self, np_type, path):
         # Test np.float values read come back as float.
-        df = DataFrame(np.random.random_sample(10), dtype=np_type)
+        df = DataFrame(np.random.default_rng(2).random(10), dtype=np_type)
         df.to_excel(path, "test1")
 
         with ExcelFile(path) as reader:
@@ -502,7 +514,6 @@ class TestExcelWriter:
         tm.assert_frame_equal(df, recons)
 
     def test_sheets(self, frame, tsframe, path):
-
         # freq doesn't round-trip
         index = pd.DatetimeIndex(np.asarray(tsframe.index), freq=None)
         tsframe.index = index
@@ -556,7 +567,7 @@ class TestExcelWriter:
         frame.to_excel(path, "test1", index=False)
 
         # test index_label
-        df = DataFrame(np.random.randn(10, 2)) >= 0
+        df = DataFrame(np.random.default_rng(2).standard_normal((10, 2))) >= 0
         df.to_excel(path, "test1", index_label=["test"], merge_cells=merge_cells)
         with ExcelFile(path) as reader:
             recons = pd.read_excel(reader, sheet_name="test1", index_col=0).astype(
@@ -565,7 +576,7 @@ class TestExcelWriter:
         df.index.names = ["test"]
         assert df.index.names == recons.index.names
 
-        df = DataFrame(np.random.randn(10, 2)) >= 0
+        df = DataFrame(np.random.default_rng(2).standard_normal((10, 2))) >= 0
         df.to_excel(
             path,
             "test1",
@@ -579,7 +590,7 @@ class TestExcelWriter:
         df.index.names = ["test"]
         assert df.index.names == recons.index.names
 
-        df = DataFrame(np.random.randn(10, 2)) >= 0
+        df = DataFrame(np.random.default_rng(2).standard_normal((10, 2))) >= 0
         df.to_excel(path, "test1", index_label="test", merge_cells=merge_cells)
         with ExcelFile(path) as reader:
             recons = pd.read_excel(reader, sheet_name="test1", index_col=0).astype(
@@ -604,7 +615,7 @@ class TestExcelWriter:
         tm.assert_frame_equal(df, recons)
 
     def test_excel_roundtrip_indexname(self, merge_cells, path):
-        df = DataFrame(np.random.randn(10, 4))
+        df = DataFrame(np.random.default_rng(2).standard_normal((10, 4)))
         df.index.name = "foo"
 
         df.to_excel(path, merge_cells=merge_cells)
@@ -680,7 +691,9 @@ class TestExcelWriter:
         # see gh-19242
         #
         # Test writing Interval without labels.
-        df = DataFrame(np.random.randint(-10, 10, size=(20, 1)), dtype=np.int64)
+        df = DataFrame(
+            np.random.default_rng(2).integers(-10, 10, size=(20, 1)), dtype=np.int64
+        )
         expected = df.copy()
 
         df["new"] = pd.cut(df[0], 10)
@@ -695,7 +708,9 @@ class TestExcelWriter:
         # see gh-19242
         #
         # Test writing Interval with labels.
-        df = DataFrame(np.random.randint(-10, 10, size=(20, 1)), dtype=np.int64)
+        df = DataFrame(
+            np.random.default_rng(2).integers(-10, 10, size=(20, 1)), dtype=np.int64
+        )
         expected = df.copy()
         intervals = pd.cut(
             df[0], 10, labels=["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
@@ -713,7 +728,9 @@ class TestExcelWriter:
         #
         # Test writing timedelta to xls.
         df = DataFrame(
-            np.random.randint(-10, 10, size=(20, 1)), columns=["A"], dtype=np.int64
+            np.random.default_rng(2).integers(-10, 10, size=(20, 1)),
+            columns=["A"],
+            dtype=np.int64,
         )
         expected = df.copy()
 
@@ -737,7 +754,7 @@ class TestExcelWriter:
         tm.assert_frame_equal(xp, rs.to_period("M"))
 
     def test_to_excel_multiindex(self, merge_cells, frame, path):
-        arrays = np.arange(len(frame.index) * 2).reshape(2, -1)
+        arrays = np.arange(len(frame.index) * 2, dtype=np.int64).reshape(2, -1)
         new_index = MultiIndex.from_arrays(arrays, names=["first", "second"])
         frame.index = new_index
 
@@ -752,7 +769,13 @@ class TestExcelWriter:
 
     # GH13511
     def test_to_excel_multiindex_nan_label(self, merge_cells, path):
-        df = DataFrame({"A": [None, 2, 3], "B": [10, 20, 30], "C": np.random.sample(3)})
+        df = DataFrame(
+            {
+                "A": [None, 2, 3],
+                "B": [10, 20, 30],
+                "C": np.random.default_rng(2).random(3),
+            }
+        )
         df = df.set_index(["A", "B"])
 
         df.to_excel(path, merge_cells=merge_cells)
@@ -763,7 +786,7 @@ class TestExcelWriter:
     # sure they are handled correctly for either setting of
     # merge_cells
     def test_to_excel_multiindex_cols(self, merge_cells, frame, path):
-        arrays = np.arange(len(frame.index) * 2).reshape(2, -1)
+        arrays = np.arange(len(frame.index) * 2, dtype=np.int64).reshape(2, -1)
         new_index = MultiIndex.from_arrays(arrays, names=["first", "second"])
         frame.index = new_index
 
@@ -786,7 +809,7 @@ class TestExcelWriter:
 
     def test_to_excel_multiindex_dates(self, merge_cells, tsframe, path):
         # try multiindex with dates
-        new_index = [tsframe.index, np.arange(len(tsframe.index))]
+        new_index = [tsframe.index, np.arange(len(tsframe.index), dtype=np.int64)]
         tsframe.index = MultiIndex.from_arrays(new_index)
 
         tsframe.index.names = ["time", "foo"]
@@ -1097,7 +1120,7 @@ class TestExcelWriter:
     def test_bytes_io(self, engine):
         # see gh-7074
         with BytesIO() as bio:
-            df = DataFrame(np.random.randn(10, 2))
+            df = DataFrame(np.random.default_rng(2).standard_normal((10, 2)))
 
             # Pass engine explicitly, as there is no file path to infer from.
             with ExcelWriter(bio, engine=engine) as writer:
@@ -1106,6 +1129,38 @@ class TestExcelWriter:
             bio.seek(0)
             reread_df = pd.read_excel(bio, index_col=0)
             tm.assert_frame_equal(df, reread_df)
+
+    def test_engine_kwargs(self, engine, path):
+        # GH#52368
+        df = DataFrame([{"A": 1, "B": 2}, {"A": 3, "B": 4}])
+
+        msgs = {
+            "odf": r"OpenDocumentSpreadsheet() got an unexpected keyword "
+            r"argument 'foo'",
+            "openpyxl": r"__init__() got an unexpected keyword argument 'foo'",
+            "xlsxwriter": r"__init__() got an unexpected keyword argument 'foo'",
+        }
+
+        if PY310:
+            msgs[
+                "openpyxl"
+            ] = "Workbook.__init__() got an unexpected keyword argument 'foo'"
+            msgs[
+                "xlsxwriter"
+            ] = "Workbook.__init__() got an unexpected keyword argument 'foo'"
+
+        # Handle change in error message for openpyxl (write and append mode)
+        if engine == "openpyxl" and not os.path.exists(path):
+            msgs[
+                "openpyxl"
+            ] = r"load_workbook() got an unexpected keyword argument 'foo'"
+
+        with pytest.raises(TypeError, match=re.escape(msgs[engine])):
+            df.to_excel(
+                path,
+                engine=engine,
+                engine_kwargs={"foo": "bar"},
+            )
 
     def test_write_lists_dict(self, path):
         # see gh-8188.

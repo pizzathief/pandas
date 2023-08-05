@@ -8,9 +8,8 @@ from datetime import datetime
 from functools import partial
 import operator
 from typing import (
+    TYPE_CHECKING,
     Callable,
-    Iterable,
-    Iterator,
     Literal,
 )
 
@@ -35,7 +34,13 @@ from pandas.io.formats.printing import (
     pprint_thing_encoded,
 )
 
-REDUCTIONS = ("sum", "prod")
+if TYPE_CHECKING:
+    from collections.abc import (
+        Iterable,
+        Iterator,
+    )
+
+REDUCTIONS = ("sum", "prod", "min", "max")
 
 _unary_math_ops = (
     "sin",
@@ -184,9 +189,6 @@ class Term:
 
 
 class Constant(Term):
-    def __init__(self, value, env, side=None, encoding=None) -> None:
-        super().__init__(value, env, side=side, encoding=encoding)
-
     def _resolve_name(self):
         return self._name
 
@@ -601,8 +603,7 @@ class MathCall(Op):
     def __call__(self, env):
         # error: "Op" not callable
         operands = [op(env) for op in self.operands]  # type: ignore[operator]
-        with np.errstate(all="ignore"):
-            return self.func.func(*operands)
+        return self.func.func(*operands)
 
     def __repr__(self) -> str:
         operands = map(str, self.operands)

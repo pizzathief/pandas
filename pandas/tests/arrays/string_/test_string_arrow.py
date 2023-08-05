@@ -4,7 +4,7 @@ import re
 import numpy as np
 import pytest
 
-from pandas.compat import pa_version_under6p0
+from pandas.compat import pa_version_under7p0
 
 import pandas as pd
 import pandas._testing as tm
@@ -15,8 +15,8 @@ from pandas.core.arrays.string_ import (
 from pandas.core.arrays.string_arrow import ArrowStringArray
 
 skip_if_no_pyarrow = pytest.mark.skipif(
-    pa_version_under6p0,
-    reason="pyarrow>=6.0.0 is required for PyArrow backed StringArray",
+    pa_version_under7p0,
+    reason="pyarrow>=7.0.0 is required for PyArrow backed StringArray",
 )
 
 
@@ -24,7 +24,7 @@ skip_if_no_pyarrow = pytest.mark.skipif(
 def test_eq_all_na():
     a = pd.array([pd.NA, pd.NA], dtype=StringDtype("pyarrow"))
     result = a == a
-    expected = pd.array([pd.NA, pd.NA], dtype="boolean")
+    expected = pd.array([pd.NA, pd.NA], dtype="boolean[pyarrow]")
     tm.assert_extension_array_equal(result, expected)
 
 
@@ -67,6 +67,33 @@ def test_constructor_not_string_type_raises(array, chunked):
         )
     with pytest.raises(ValueError, match=msg):
         ArrowStringArray(arr)
+
+
+@pytest.mark.parametrize("chunked", [True, False])
+def test_constructor_not_string_type_value_dictionary_raises(chunked):
+    pa = pytest.importorskip("pyarrow")
+
+    arr = pa.array([1, 2, 3], pa.dictionary(pa.int32(), pa.int32()))
+    if chunked:
+        arr = pa.chunked_array(arr)
+
+    msg = re.escape(
+        "ArrowStringArray requires a PyArrow (chunked) array of string type"
+    )
+    with pytest.raises(ValueError, match=msg):
+        ArrowStringArray(arr)
+
+
+@pytest.mark.parametrize("chunked", [True, False])
+def test_constructor_valid_string_type_value_dictionary(chunked):
+    pa = pytest.importorskip("pyarrow")
+
+    arr = pa.array(["1", "2", "3"], pa.dictionary(pa.int32(), pa.utf8()))
+    if chunked:
+        arr = pa.chunked_array(arr)
+
+    arr = ArrowStringArray(arr)
+    assert pa.types.is_string(arr._pa_array.type.value_type)
 
 
 @skip_if_no_pyarrow
@@ -119,11 +146,11 @@ def test_from_sequence_wrong_dtype_raises():
 
 
 @pytest.mark.skipif(
-    not pa_version_under6p0,
+    not pa_version_under7p0,
     reason="pyarrow is installed",
 )
 def test_pyarrow_not_installed_raises():
-    msg = re.escape("pyarrow>=6.0.0 is required for PyArrow backed")
+    msg = re.escape("pyarrow>=7.0.0 is required for PyArrow backed")
 
     with pytest.raises(ImportError, match=msg):
         StringDtype(storage="pyarrow")
@@ -172,7 +199,6 @@ def test_setitem(multiple_chunks, key, value, expected):
 
     result[key] = value
     tm.assert_equal(result, expected)
-    assert result._data.num_chunks == expected._data.num_chunks
 
 
 @skip_if_no_pyarrow

@@ -7,7 +7,7 @@ import contextlib
 import copy
 import io
 import pickle as pkl
-from typing import Generator
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -22,6 +22,9 @@ from pandas.core.arrays import (
 )
 from pandas.core.internals import BlockManager
 
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
 
 def load_reduce(self):
     stack = self.stack
@@ -32,7 +35,6 @@ def load_reduce(self):
         stack[-1] = func(*args)
         return
     except TypeError as err:
-
         # If we have a deprecated function,
         # try to replace and try again.
 
@@ -94,8 +96,8 @@ _class_locations_map = {
     ("pandas.indexes.base", "_new_Index"): ("pandas.core.indexes.base", "_new_Index"),
     ("pandas.indexes.base", "Index"): ("pandas.core.indexes.base", "Index"),
     ("pandas.indexes.numeric", "Int64Index"): (
-        "pandas.core.indexes.numeric",
-        "Int64Index",
+        "pandas.core.indexes.base",
+        "Index",  # updated in 50775
     ),
     ("pandas.indexes.range", "RangeIndex"): ("pandas.core.indexes.range", "RangeIndex"),
     ("pandas.indexes.multi", "MultiIndex"): ("pandas.core.indexes.multi", "MultiIndex"),
@@ -119,8 +121,25 @@ _class_locations_map = {
         "TimedeltaIndex",
     ),
     ("pandas.indexes.numeric", "Float64Index"): (
-        "pandas.core.indexes.numeric",
-        "Float64Index",
+        "pandas.core.indexes.base",
+        "Index",  # updated in 50775
+    ),
+    # 50775, remove Int64Index, UInt64Index & Float64Index from codabase
+    ("pandas.core.indexes.numeric", "Int64Index"): (
+        "pandas.core.indexes.base",
+        "Index",
+    ),
+    ("pandas.core.indexes.numeric", "UInt64Index"): (
+        "pandas.core.indexes.base",
+        "Index",
+    ),
+    ("pandas.core.indexes.numeric", "Float64Index"): (
+        "pandas.core.indexes.base",
+        "Index",
+    ),
+    ("pandas.core.arrays.sparse.dtype", "SparseDtype"): (
+        "pandas.core.dtypes.dtypes",
+        "SparseDtype",
     ),
 }
 
@@ -155,7 +174,7 @@ def load_newobj(self) -> None:
         arr = np.array([], dtype="m8[ns]")
         obj = cls.__new__(cls, arr, arr.dtype)
     elif cls is BlockManager and not args:
-        obj = cls.__new__(cls, (), [], None, False)
+        obj = cls.__new__(cls, (), [], False)
     else:
         obj = cls.__new__(cls, *args)
 

@@ -9,24 +9,22 @@ from __future__ import annotations
 from collections import abc
 import numbers
 import re
+from re import Pattern
 from typing import (
     TYPE_CHECKING,
-    Iterable,
     Literal,
-    Pattern,
-    Sequence,
     cast,
 )
+import warnings
 
-from pandas._typing import (
-    FilePath,
-    ReadBuffer,
-)
+from pandas._libs import lib
 from pandas.compat._optional import import_optional_dependency
 from pandas.errors import (
     AbstractMethodError,
     EmptyDataError,
 )
+from pandas.util._exceptions import find_stack_level
+from pandas.util._validators import check_dtype_backend
 
 from pandas.core.dtypes.common import is_list_like
 
@@ -38,43 +36,30 @@ from pandas.core.series import Series
 from pandas.io.common import (
     file_exists,
     get_handle,
+    is_file_like,
+    is_fsspec_url,
     is_url,
     stringify_path,
-    urlopen,
     validate_header_arg,
 )
 from pandas.io.formats.printing import pprint_thing
 from pandas.io.parsers import TextParser
 
 if TYPE_CHECKING:
+    from collections.abc import (
+        Iterable,
+        Sequence,
+    )
+
+    from pandas._typing import (
+        BaseBuffer,
+        DtypeBackend,
+        FilePath,
+        ReadBuffer,
+        StorageOptions,
+    )
+
     from pandas import DataFrame
-
-_IMPORTS = False
-_HAS_BS4 = False
-_HAS_LXML = False
-_HAS_HTML5LIB = False
-
-
-def _importers() -> None:
-    # import things we need
-    # but make this done on a first use basis
-
-    global _IMPORTS
-    if _IMPORTS:
-        return
-
-    global _HAS_BS4, _HAS_LXML, _HAS_HTML5LIB
-    bs4 = import_optional_dependency("bs4", errors="ignore")
-    _HAS_BS4 = bs4 is not None
-
-    lxml = import_optional_dependency("lxml.etree", errors="ignore")
-    _HAS_LXML = lxml is not None
-
-    html5lib = import_optional_dependency("html5lib", errors="ignore")
-    _HAS_HTML5LIB = html5lib is not None
-
-    _IMPORTS = True
-
 
 #############
 # READ HTML #
@@ -131,7 +116,9 @@ def _get_skiprows(skiprows: int | Sequence[int] | slice | None) -> int | Sequenc
 
 
 def _read(
-    obj: bytes | FilePath | ReadBuffer[str] | ReadBuffer[bytes], encoding: str | None
+    obj: FilePath | BaseBuffer,
+    encoding: str | None,
+    storage_options: StorageOptions | None,
 ) -> str | bytes:
     """
     Try to read from a url, file or string.
@@ -150,12 +137,8 @@ def _read(
         or hasattr(obj, "read")
         or (isinstance(obj, str) and file_exists(obj))
     ):
-        # error: Argument 1 to "get_handle" has incompatible type "Union[str, bytes,
-        # Union[IO[Any], RawIOBase, BufferedIOBase, TextIOBase, TextIOWrapper, mmap]]";
-        # expected "Union[PathLike[str], Union[str, Union[IO[Any], RawIOBase,
-        # BufferedIOBase, TextIOBase, TextIOWrapper, mmap]]]"
         with get_handle(
-            obj, "r", encoding=encoding  # type: ignore[arg-type]
+            obj, "r", encoding=encoding, storage_options=storage_options
         ) as handles:
             text = handles.handle.read()
     elif isinstance(obj, (str, bytes)):
@@ -242,6 +225,7 @@ class _HtmlFrameParser:
         encoding: str,
         displayed_only: bool,
         extract_links: Literal[None, "header", "footer", "body", "all"],
+        storage_options: StorageOptions = None,
     ) -> None:
         self.io = io
         self.match = match
@@ -249,6 +233,7 @@ class _HtmlFrameParser:
         self.encoding = encoding
         self.displayed_only = displayed_only
         self.extract_links = extract_links
+        self.storage_options = storage_options
 
     def parse_tables(self):
         """
@@ -561,7 +546,7 @@ class _HtmlFrameParser:
 
         return all_texts
 
-    def _handle_hidden_tables(self, tbl_list, attr_name):
+    def _handle_hidden_tables(self, tbl_list, attr_name: str):
         """
         Return list of tables, potentially removing hidden elements
 
@@ -612,7 +597,6 @@ class _BeautifulSoupHtml5LibFrameParser(_HtmlFrameParser):
     def _parse_tables(self, doc, match, attrs):
         element_name = self._strainer.name
         tables = doc.find_all(element_name, attrs=attrs)
-
         if not tables:
             raise ValueError("No tables found")
 
@@ -622,13 +606,15 @@ class _BeautifulSoupHtml5LibFrameParser(_HtmlFrameParser):
 
         for table in tables:
             if self.displayed_only:
+                for elem in table.find_all("style"):
+                    elem.decompose()
+
                 for elem in table.find_all(style=re.compile(r"display:\s*none")):
                     elem.decompose()
 
             if table not in unique_tables and table.find(string=match) is not None:
                 result.append(table)
             unique_tables.add(table)
-
         if not result:
             raise ValueError(f"No tables found matching pattern {repr(match.pattern)}")
         return result
@@ -659,7 +645,7 @@ class _BeautifulSoupHtml5LibFrameParser(_HtmlFrameParser):
         return table.select("tfoot tr")
 
     def _setup_build_doc(self):
-        raw_text = _read(self.io, self.encoding)
+        raw_text = _read(self.io, self.encoding, self.storage_options)
         if not raw_text:
             raise ValueError(f"No text parsed from document: {self.io}")
         return raw_text
@@ -760,10 +746,11 @@ class _LxmlFrameParser(_HtmlFrameParser):
                 # lxml utilizes XPATH 1.0 which does not have regex
                 # support. As a result, we find all elements with a style
                 # attribute and iterate them to check for display:none
+                for elem in table.xpath(".//style"):
+                    elem.drop_tree()
                 for elem in table.xpath(".//*[@style]"):
                     if "display:none" in elem.attrib.get("style", "").replace(" ", ""):
-                        elem.getparent().remove(elem)
-
+                        elem.drop_tree()
         if not tables:
             raise ValueError(f"No tables found matching regex {repr(pattern)}")
         return tables
@@ -798,8 +785,10 @@ class _LxmlFrameParser(_HtmlFrameParser):
 
         try:
             if is_url(self.io):
-                with urlopen(self.io) as f:
-                    r = parse(f, parser=parser)
+                with get_handle(
+                    self.io, "r", storage_options=self.storage_options
+                ) as f:
+                    r = parse(f.handle, parser=parser)
             else:
                 # try to parse the input in the simplest way
                 r = parse(self.io, parser=parser)
@@ -926,16 +915,10 @@ def _parser_dispatch(flavor: str | None) -> type[_HtmlFrameParser]:
         )
 
     if flavor in ("bs4", "html5lib"):
-        if not _HAS_HTML5LIB:
-            raise ImportError("html5lib not found, please install it")
-        if not _HAS_BS4:
-            raise ImportError("BeautifulSoup4 (bs4) not found, please install it")
-        # Although we call this above, we want to raise here right before use.
-        bs4 = import_optional_dependency("bs4")  # noqa:F841
-
+        import_optional_dependency("html5lib")
+        import_optional_dependency("bs4")
     else:
-        if not _HAS_LXML:
-            raise ImportError("lxml not found, please install it")
+        import_optional_dependency("lxml.etree")
     return _valid_parsers[flavor]
 
 
@@ -972,14 +955,32 @@ def _validate_flavor(flavor):
     return flavor
 
 
-def _parse(flavor, io, match, attrs, encoding, displayed_only, extract_links, **kwargs):
+def _parse(
+    flavor,
+    io,
+    match,
+    attrs,
+    encoding,
+    displayed_only,
+    extract_links,
+    storage_options,
+    **kwargs,
+):
     flavor = _validate_flavor(flavor)
     compiled_match = re.compile(match)  # you can pass a compiled regex here
 
     retained = None
     for flav in flavor:
         parser = _parser_dispatch(flav)
-        p = parser(io, compiled_match, attrs, encoding, displayed_only, extract_links)
+        p = parser(
+            io,
+            compiled_match,
+            attrs,
+            encoding,
+            displayed_only,
+            extract_links,
+            storage_options,
+        )
 
         try:
             tables = p.parse_tables()
@@ -1043,6 +1044,8 @@ def read_html(
     keep_default_na: bool = True,
     displayed_only: bool = True,
     extract_links: Literal[None, "header", "footer", "body", "all"] = None,
+    dtype_backend: DtypeBackend | lib.NoDefault = lib.no_default,
+    storage_options: StorageOptions = None,
 ) -> list[DataFrame]:
     r"""
     Read HTML tables into a ``list`` of ``DataFrame`` objects.
@@ -1055,6 +1058,10 @@ def read_html(
         The string can represent a URL or the HTML itself. Note that
         lxml only accepts the http, ftp and file url protocols. If you have a
         URL that starts with ``'https'`` you might try removing the ``'s'``.
+
+        .. deprecated:: 2.1.0
+            Passing html literal strings is deprecated.
+            Wrap literal string/bytes input in ``io.StringIO``/``io.BytesIO`` instead.
 
     match : str or compiled regular expression, optional
         The set of tables containing text matching this regex or string will be
@@ -1143,6 +1150,17 @@ def read_html(
 
         .. versionadded:: 1.5.0
 
+    dtype_backend : {'numpy_nullable', 'pyarrow'}, default 'numpy_nullable'
+        Back-end data type applied to the resultant :class:`DataFrame`
+        (still experimental). Behaviour is as follows:
+
+        * ``"numpy_nullable"``: returns nullable-dtype-backed :class:`DataFrame`
+          (default).
+        * ``"pyarrow"``: returns pyarrow-backed nullable :class:`ArrowDtype`
+          DataFrame.
+
+        .. versionadded:: 2.0
+
     Returns
     -------
     dfs
@@ -1182,8 +1200,6 @@ def read_html(
     See the :ref:`read_html documentation in the IO section of the docs
     <io.read_html>` for some examples of reading in HTML tables.
     """
-    _importers()
-
     # Type check here. We don't want to parse only to fail because of an
     # invalid value of an integer skiprows.
     if isinstance(skiprows, numbers.Integral) and skiprows < 0:
@@ -1197,9 +1213,27 @@ def read_html(
             '{None, "header", "footer", "body", "all"}, got '
             f'"{extract_links}"'
         )
+
     validate_header_arg(header)
+    check_dtype_backend(dtype_backend)
 
     io = stringify_path(io)
+
+    if isinstance(io, str) and not any(
+        [
+            is_file_like(io),
+            file_exists(io),
+            is_url(io),
+            is_fsspec_url(io),
+        ]
+    ):
+        warnings.warn(
+            "Passing literal html to 'read_html' is deprecated and "
+            "will be removed in a future version. To read from a "
+            "literal string, wrap it in a 'StringIO' object.",
+            FutureWarning,
+            stacklevel=find_stack_level(),
+        )
 
     return _parse(
         flavor=flavor,
@@ -1218,4 +1252,6 @@ def read_html(
         keep_default_na=keep_default_na,
         displayed_only=displayed_only,
         extract_links=extract_links,
+        dtype_backend=dtype_backend,
+        storage_options=storage_options,
     )

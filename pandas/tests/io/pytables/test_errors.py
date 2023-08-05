@@ -26,7 +26,6 @@ pytestmark = pytest.mark.single_cpu
 
 
 def test_pass_spec_to_storer(setup_path):
-
     df = tm.makeDataFrame()
 
     with ensure_clean_store(setup_path) as store:
@@ -57,9 +56,7 @@ def test_table_index_incompatible_dtypes(setup_path):
 
 
 def test_unimplemented_dtypes_table_columns(setup_path):
-
     with ensure_clean_store(setup_path) as store:
-
         dtypes = [("date", datetime.date(2001, 1, 2))]
 
         # currently not supported dtypes ####
@@ -88,11 +85,8 @@ because its data contents are not [string] but [date] object dtype"""
 
 
 def test_invalid_terms(tmp_path, setup_path):
-
     with ensure_clean_store(setup_path) as store:
-
         with catch_warnings(record=True):
-
             df = tm.makeTimeDataFrame()
             df["string"] = "foo"
             df.loc[df.index[0:4], "string"] = "bar"
@@ -121,7 +115,7 @@ def test_invalid_terms(tmp_path, setup_path):
     # from the docs
     path = tmp_path / setup_path
     dfq = DataFrame(
-        np.random.randn(10, 4),
+        np.random.default_rng(2).standard_normal((10, 4)),
         columns=list("ABCD"),
         index=date_range("20130101", periods=10),
     )
@@ -134,7 +128,7 @@ def test_invalid_terms(tmp_path, setup_path):
     # catch the invalid reference
     path = tmp_path / setup_path
     dfq = DataFrame(
-        np.random.randn(10, 4),
+        np.random.default_rng(2).standard_normal((10, 4)),
         columns=list("ABCD"),
         index=date_range("20130101", periods=10),
     )
@@ -152,14 +146,14 @@ def test_invalid_terms(tmp_path, setup_path):
 
 
 def test_append_with_diff_col_name_types_raises_value_error(setup_path):
-    df = DataFrame(np.random.randn(10, 1))
-    df2 = DataFrame({"a": np.random.randn(10)})
-    df3 = DataFrame({(1, 2): np.random.randn(10)})
-    df4 = DataFrame({("1", 2): np.random.randn(10)})
-    df5 = DataFrame({("1", 2, object): np.random.randn(10)})
+    df = DataFrame(np.random.default_rng(2).standard_normal((10, 1)))
+    df2 = DataFrame({"a": np.random.default_rng(2).standard_normal(10)})
+    df3 = DataFrame({(1, 2): np.random.default_rng(2).standard_normal(10)})
+    df4 = DataFrame({("1", 2): np.random.default_rng(2).standard_normal(10)})
+    df5 = DataFrame({("1", 2, object): np.random.default_rng(2).standard_normal(10)})
 
     with ensure_clean_store(setup_path) as store:
-        name = f"df_{tm.rands(10)}"
+        name = "df_diff_valerror"
         store.append(name, df)
 
         for d in (df2, df3, df4, df5):
@@ -171,7 +165,11 @@ def test_append_with_diff_col_name_types_raises_value_error(setup_path):
 
 
 def test_invalid_complib(setup_path):
-    df = DataFrame(np.random.rand(4, 5), index=list("abcd"), columns=list("ABCDE"))
+    df = DataFrame(
+        np.random.default_rng(2).random((4, 5)),
+        index=list("abcd"),
+        columns=list("ABCDE"),
+    )
     with tm.ensure_clean(setup_path) as path:
         msg = r"complib only supports \[.*\] compression."
         with pytest.raises(ValueError, match=msg):
@@ -207,7 +205,11 @@ def test_unsuppored_hdf_file_error(datapath):
 
 
 def test_read_hdf_errors(setup_path, tmp_path):
-    df = DataFrame(np.random.rand(4, 5), index=list("abcd"), columns=list("ABCDE"))
+    df = DataFrame(
+        np.random.default_rng(2).random((4, 5)),
+        index=list("abcd"),
+        columns=list("ABCDE"),
+    )
 
     path = tmp_path / setup_path
     msg = r"File [\S]* does not exist"

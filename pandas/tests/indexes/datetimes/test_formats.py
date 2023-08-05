@@ -44,6 +44,18 @@ def test_format_native_types():
     result = index._format_native_types(na_rep="pandas")
     tm.assert_numpy_array_equal(result, expected)
 
+    result = index._format_native_types(date_format="%Y-%m-%d %H:%M:%S.%f")
+    expected = np.array(
+        ["2017-01-01 00:00:00.000000", "NaT", "2017-01-03 00:00:00.000000"],
+        dtype=object,
+    )
+    tm.assert_numpy_array_equal(result, expected)
+
+    # invalid format
+    result = index._format_native_types(date_format="foo")
+    expected = np.array(["foo", "NaT", "foo"], dtype=object)
+    tm.assert_numpy_array_equal(result, expected)
+
 
 class TestDatetimeIndexRendering:
     def test_dti_repr_short(self):
@@ -55,6 +67,36 @@ class TestDatetimeIndexRendering:
 
         dr = pd.date_range(start="1/1/2012", periods=3)
         repr(dr)
+
+    @pytest.mark.parametrize(
+        "dates, freq, expected_repr",
+        [
+            (
+                ["2012-01-01 00:00:00"],
+                "60T",
+                (
+                    "DatetimeIndex(['2012-01-01 00:00:00'], "
+                    "dtype='datetime64[ns]', freq='60T')"
+                ),
+            ),
+            (
+                ["2012-01-01 00:00:00", "2012-01-01 01:00:00"],
+                "60T",
+                "DatetimeIndex(['2012-01-01 00:00:00', '2012-01-01 01:00:00'], "
+                "dtype='datetime64[ns]', freq='60T')",
+            ),
+            (
+                ["2012-01-01"],
+                "24H",
+                "DatetimeIndex(['2012-01-01'], dtype='datetime64[ns]', freq='24H')",
+            ),
+        ],
+    )
+    def test_dti_repr_time_midnight(self, dates, freq, expected_repr):
+        # GH53634
+        dti = DatetimeIndex(dates, freq)
+        actual_repr = repr(dti)
+        assert actual_repr == expected_repr
 
     @pytest.mark.parametrize("method", ["__repr__", "__str__"])
     def test_dti_representation(self, method):

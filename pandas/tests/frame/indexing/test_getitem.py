@@ -37,7 +37,7 @@ class TestGetitem:
 
     def test_getitem_periodindex(self):
         rng = period_range("1/1/2000", periods=5)
-        df = DataFrame(np.random.randn(10, 5), columns=rng)
+        df = DataFrame(np.random.default_rng(2).standard_normal((10, 5)), columns=rng)
 
         ts = df[rng[0]]
         tm.assert_series_equal(ts, df.iloc[:, 0])
@@ -93,7 +93,9 @@ class TestGetitemListLike:
 
     def test_getitem_list_duplicates(self):
         # GH#1943
-        df = DataFrame(np.random.randn(4, 4), columns=list("AABC"))
+        df = DataFrame(
+            np.random.default_rng(2).standard_normal((4, 4)), columns=list("AABC")
+        )
         df.columns.name = "foo"
 
         result = df[["B", "C"]]
@@ -129,7 +131,7 @@ class TestGetitemListLike:
         else:
             # MultiIndex columns
             frame = DataFrame(
-                np.random.randn(8, 3),
+                np.random.default_rng(2).standard_normal((8, 3)),
                 columns=Index(
                     [("foo", "bar"), ("baz", "qux"), ("peek", "aboo")],
                     name=("sth", "sth2"),
@@ -156,8 +158,7 @@ class TestGetitemListLike:
 
         idx = idx_type(keys + [missing])
         with pytest.raises(KeyError, match="not in index"):
-            with tm.assert_produces_warning(FutureWarning):
-                frame[idx]
+            frame[idx]
 
     def test_getitem_iloc_generator(self):
         # GH#39614
@@ -246,7 +247,6 @@ class TestGetitemCallable:
 
 class TestGetitemBooleanMask:
     def test_getitem_bool_mask_categorical_index(self):
-
         df3 = DataFrame(
             {
                 "A": np.arange(6, dtype="int64"),
@@ -357,8 +357,7 @@ class TestGetitemBooleanMask:
         df = df_dup_cols
         msg = "cannot reindex on an axis with duplicate labels"
         with pytest.raises(ValueError, match=msg):
-            with tm.assert_produces_warning(FutureWarning, match="non-unique"):
-                df[df.A > 6]
+            df[df.A > 6]
 
     def test_getitem_boolean_series_with_duplicate_columns(self, df_dup_cols):
         # boolean indexing
@@ -377,7 +376,6 @@ class TestGetitemBooleanMask:
         str(result)
 
     def test_getitem_boolean_frame_with_duplicate_columns(self, df_dup_cols):
-
         # where
         df = DataFrame(
             np.arange(12).reshape(3, 4), columns=["A", "B", "C", "D"], dtype="float64"
@@ -429,7 +427,7 @@ class TestGetitemSlice:
 
         start, end = values[[5, 15]]
 
-        data = np.random.randn(20, 3)
+        data = np.random.default_rng(2).standard_normal((20, 3))
         if frame_or_series is not DataFrame:
             data = data[:, 0]
 

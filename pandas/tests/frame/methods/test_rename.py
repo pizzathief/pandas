@@ -87,7 +87,7 @@ class TestRename:
     def test_rename_chainmap(self, args, kwargs):
         # see gh-23859
         colAData = range(1, 11)
-        colBdata = np.random.randn(10)
+        colBdata = np.random.default_rng(2).standard_normal(10)
 
         df = DataFrame({"A": colAData, "B": colBdata})
         result = df.rename(*args, **kwargs)
@@ -96,7 +96,6 @@ class TestRename:
         tm.assert_frame_equal(result, expected)
 
     def test_rename_multiindex(self):
-
         tuples_index = [("foo1", "bar1"), ("foo2", "bar2")]
         tuples_columns = [("fizz1", "buzz1"), ("fizz2", "buzz2")]
         index = MultiIndex.from_tuples(tuples_index, names=["foo", "bar"])

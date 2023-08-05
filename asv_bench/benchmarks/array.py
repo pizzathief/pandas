@@ -2,8 +2,6 @@ import numpy as np
 
 import pandas as pd
 
-from .pandas_vb_common import tm
-
 
 class BooleanArray:
     def setup(self):
@@ -44,10 +42,19 @@ class IntegerArray:
         pd.array(self.values_integer, dtype="Int64")
 
 
+class IntervalArray:
+    def setup(self):
+        N = 10_000
+        self.tuples = [(i, i + 1) for i in range(N)]
+
+    def time_from_tuples(self):
+        pd.arrays.IntervalArray.from_tuples(self.tuples)
+
+
 class StringArray:
     def setup(self):
         N = 100_000
-        values = tm.rands_array(3, N)
+        values = np.array([str(i) for i in range(N)], dtype=object)
         self.values_obj = np.array(values, dtype="object")
         self.values_str = np.array(values, dtype="U")
         self.values_list = values.tolist()
@@ -63,7 +70,6 @@ class StringArray:
 
 
 class ArrowStringArray:
-
     params = [False, True]
     param_names = ["multiple_chunks"]
 
@@ -72,7 +78,7 @@ class ArrowStringArray:
             import pyarrow as pa
         except ImportError:
             raise NotImplementedError
-        strings = tm.rands_array(3, 10_000)
+        strings = np.array([str(i) for i in range(10_000)], dtype=object)
         if multiple_chunks:
             chunks = [strings[i : i + 100] for i in range(0, len(strings), 100)]
             self.array = pd.arrays.ArrowStringArray(pa.chunked_array(chunks))
@@ -84,7 +90,7 @@ class ArrowStringArray:
             self.array[i] = "foo"
 
     def time_setitem_list(self, multiple_chunks):
-        indexer = list(range(0, 50)) + list(range(-50, 0))
+        indexer = list(range(0, 50)) + list(range(-1000, 0, 50))
         self.array[indexer] = ["foo"] * len(indexer)
 
     def time_setitem_slice(self, multiple_chunks):
@@ -98,7 +104,6 @@ class ArrowStringArray:
 
 
 class ArrowExtensionArray:
-
     params = [
         [
             "boolean[pyarrow]",
@@ -120,7 +125,7 @@ class ArrowExtensionArray:
         elif dtype == "int64[pyarrow]":
             data = np.arange(N)
         elif dtype == "string[pyarrow]":
-            data = tm.rands_array(10, N)
+            data = np.array([str(i) for i in range(N)], dtype=object)
         elif dtype == "timestamp[ns][pyarrow]":
             data = pd.date_range("2000-01-01", freq="s", periods=N)
         else:

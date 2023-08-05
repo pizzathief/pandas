@@ -8,11 +8,6 @@ from pandas.core.dtypes import generic as gt
 
 import pandas as pd
 import pandas._testing as tm
-from pandas.core.api import (
-    Float64Index,
-    Int64Index,
-    UInt64Index,
-)
 
 
 class TestABCClasses:
@@ -24,21 +19,21 @@ class TestABCClasses:
     categorical = pd.Categorical([1, 2, 3], categories=[2, 3, 1])
     categorical_df = pd.DataFrame({"values": [1, 2, 3]}, index=categorical)
     df = pd.DataFrame({"names": ["a", "b", "c"]}, index=multi_index)
-    sparse_array = pd.arrays.SparseArray(np.random.randn(10))
+    sparse_array = pd.arrays.SparseArray(np.random.default_rng(2).standard_normal(10))
     datetime_array = pd.core.arrays.DatetimeArray(datetime_index)
     timedelta_array = pd.core.arrays.TimedeltaArray(timedelta_index)
 
     abc_pairs = [
-        ("ABCInt64Index", Int64Index([1, 2, 3])),
-        ("ABCUInt64Index", UInt64Index([1, 2, 3])),
-        ("ABCFloat64Index", Float64Index([1, 2, 3])),
         ("ABCMultiIndex", multi_index),
         ("ABCDatetimeIndex", datetime_index),
         ("ABCRangeIndex", pd.RangeIndex(3)),
         ("ABCTimedeltaIndex", timedelta_index),
         ("ABCIntervalIndex", pd.interval_range(start=0, end=3)),
-        ("ABCPeriodArray", pd.arrays.PeriodArray([2000, 2001, 2002], freq="D")),
-        ("ABCPandasArray", pd.arrays.PandasArray(np.array([0, 1, 2]))),
+        (
+            "ABCPeriodArray",
+            pd.arrays.PeriodArray([2000, 2001, 2002], dtype="period[D]"),
+        ),
+        ("ABCNumpyExtensionArray", pd.arrays.NumpyExtensionArray(np.array([0, 1, 2]))),
         ("ABCPeriodIndex", period_index),
         ("ABCCategoricalIndex", categorical_df.index),
         ("ABCSeries", pd.Series([1, 2, 3])),

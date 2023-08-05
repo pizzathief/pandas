@@ -289,10 +289,10 @@ Invalid data
 
 The default behavior, ``errors='raise'``, is to raise when unparsable:
 
-.. code-block:: ipython
+.. ipython:: python
+   :okexcept:
 
-    In [2]: pd.to_datetime(['2009/07/31', 'asd'], errors='raise')
-    ValueError: Unknown string format
+   pd.to_datetime(['2009/07/31', 'asd'], errors='raise')
 
 Pass ``errors='ignore'`` to return the original input when unparsable:
 
@@ -334,8 +334,6 @@ which can be specified. These are computed from the starting point specified by 
    The ``unit`` parameter does not use the same strings as the ``format`` parameter
    that was discussed :ref:`above<timeseries.converting.format>`). The
    available units are listed on the documentation for :func:`pandas.to_datetime`.
-
-.. versionchanged:: 1.0.0
 
 Constructing a :class:`Timestamp` or :class:`DatetimeIndex` with an epoch timestamp
 with the ``tz`` argument specified will raise a ValueError. If you have
@@ -509,13 +507,17 @@ used if a custom frequency string is passed.
 Timestamp limitations
 ---------------------
 
-Since pandas represents timestamps in nanosecond resolution, the time span that
+The limits of timestamp representation depend on the chosen resolution. For
+nanosecond resolution, the time span that
 can be represented using a 64-bit integer is limited to approximately 584 years:
 
 .. ipython:: python
 
    pd.Timestamp.min
    pd.Timestamp.max
+
+When choosing second-resolution, the available range grows to  ``+/- 2.9e11 years``.
+Different resolutions can be converted to each other through ``as_unit``.
 
 .. seealso::
 
@@ -775,7 +777,7 @@ regularity will result in a ``DatetimeIndex``, although frequency is lost:
 
 .. ipython:: python
 
-   ts2[[0, 2, 6]].index
+   ts2.iloc[[0, 2, 6]].index
 
 .. _timeseries.components:
 
@@ -819,8 +821,6 @@ There are several time/date properties that one can access from ``Timestamp`` or
 Furthermore, if you have a ``Series`` with datetimelike values, then you can
 access these properties via the ``.dt`` accessor, as detailed in the section
 on :ref:`.dt accessors<basics.dt_accessors>`.
-
-.. versionadded:: 1.1.0
 
 You may obtain the year, week and day components of the ISO year from the ISO 8601 standard:
 
@@ -1299,6 +1299,31 @@ frequencies. We will refer to these aliases as *offset aliases*.
    given frequency it will roll to the next value for ``start_date``
    (respectively previous for the ``end_date``)
 
+.. _timeseries.period_aliases:
+
+Period aliases
+~~~~~~~~~~~~~~
+
+A number of string aliases are given to useful common time series
+frequencies. We will refer to these aliases as *period aliases*.
+
+.. csv-table::
+    :header: "Alias", "Description"
+    :widths: 15, 100
+
+    "B", "business day frequency"
+    "D", "calendar day frequency"
+    "W", "weekly frequency"
+    "M", "monthly frequency"
+    "Q", "quarterly frequency"
+    "A, Y", "yearly frequency"
+    "H", "hourly frequency"
+    "T, min", "minutely frequency"
+    "S", "secondly frequency"
+    "L, ms", "milliseconds"
+    "U, us", "microseconds"
+    "N", "nanoseconds"
+
 
 Combining aliases
 ~~~~~~~~~~~~~~~~~
@@ -1620,7 +1645,7 @@ The ``resample`` function is very flexible and allows you to specify many
 different parameters to control the frequency conversion and resampling
 operation.
 
-Any function available via :ref:`dispatching <groupby.dispatch>` is available as
+Any built-in method available via :ref:`GroupBy <api.groupby>` is available as
 a method of the returned object, including ``sum``, ``mean``, ``std``, ``sem``,
 ``max``, ``min``, ``median``, ``first``, ``last``, ``ohlc``:
 
@@ -1748,8 +1773,9 @@ We can instead only resample those groups where we have points as follows:
 Aggregation
 ~~~~~~~~~~~
 
-Similar to the :ref:`aggregating API <basics.aggregate>`, :ref:`groupby API <groupby.aggregate>`, and the :ref:`window API <window.overview>`,
-a ``Resampler`` can be selectively resampled.
+The ``resample()`` method returns a ``pandas.api.typing.Resampler`` instance.  Similar to
+the :ref:`aggregating API <basics.aggregate>`, :ref:`groupby API <groupby.aggregate>`,
+and the :ref:`window API <window.overview>`, a ``Resampler`` can be selectively resampled.
 
 Resampling a ``DataFrame``, the default will be to act on all columns with the same function.
 
@@ -1775,14 +1801,14 @@ You can pass a list or dict of functions to do aggregation with, outputting a ``
 
 .. ipython:: python
 
-   r["A"].agg([np.sum, np.mean, np.std])
+   r["A"].agg(["sum", "mean", "std"])
 
 On a resampled ``DataFrame``, you can pass a list of functions to apply to each
 column, which produces an aggregated result with a hierarchical index:
 
 .. ipython:: python
 
-   r.agg([np.sum, np.mean])
+   r.agg(["sum", "mean"])
 
 By passing a dict to ``aggregate`` you can apply a different aggregation to the
 columns of a ``DataFrame``:
@@ -1790,7 +1816,7 @@ columns of a ``DataFrame``:
 .. ipython:: python
    :okexcept:
 
-   r.agg({"A": np.sum, "B": lambda x: np.std(x, ddof=1)})
+   r.agg({"A": "sum", "B": lambda x: np.std(x, ddof=1)})
 
 The function names can also be strings. In order for a string to be valid it
 must be implemented on the resampled object:
@@ -1866,8 +1892,6 @@ See :ref:`groupby.iterating-label` or :class:`Resampler.__iter__` for more.
 
 Use ``origin`` or ``offset`` to adjust the start of the bins
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. versionadded:: 1.1.0
 
 The bins of the grouping are adjusted based on the beginning of the day of the time series starting point. This works well with frequencies that are multiples of a day (like ``30D``) or that divide a day evenly (like ``90s`` or ``1min``). This can create inconsistencies with some frequencies that do not meet this criteria. To change this behavior you can specify a fixed Timestamp with the argument ``origin``.
 
@@ -1992,12 +2016,11 @@ If ``Period`` freq is daily or higher (``D``, ``H``, ``T``, ``S``, ``L``, ``U``,
    p + datetime.timedelta(minutes=120)
    p + np.timedelta64(7200, "s")
 
-.. code-block:: ipython
+.. ipython:: python
+   :okexcept:
 
-   In [1]: p + pd.offsets.Minute(5)
-   Traceback
-      ...
-   ValueError: Input has different freq from Period(freq=H)
+   p + pd.offsets.Minute(5)
+
 
 If ``Period`` has other frequencies, only the same ``offsets`` can be added. Otherwise, ``ValueError`` will be raised.
 
@@ -2006,12 +2029,11 @@ If ``Period`` has other frequencies, only the same ``offsets`` can be added. Oth
    p = pd.Period("2014-07", freq="M")
    p + pd.offsets.MonthEnd(3)
 
-.. code-block:: ipython
+.. ipython:: python
+   :okexcept:
 
-   In [1]: p + pd.offsets.MonthBegin(3)
-   Traceback
-      ...
-   ValueError: Input has different freq from Period(freq=M)
+   p + pd.offsets.MonthBegin(3)
+
 
 Taking the difference of ``Period`` instances with the same frequency will
 return the number of frequency units between them:
@@ -2084,7 +2106,7 @@ Period dtypes
 dtype similar to the :ref:`timezone aware dtype <timeseries.timezone_series>` (``datetime64[ns, tz]``).
 
 The ``period`` dtype holds the ``freq`` attribute and is represented with
-``period[freq]`` like ``period[D]`` or ``period[M]``, using :ref:`frequency strings <timeseries.offset_aliases>`.
+``period[freq]`` like ``period[D]`` or ``period[M]``, using :ref:`frequency strings <timeseries.period_aliases>`.
 
 .. ipython:: python
 
@@ -2113,8 +2135,6 @@ PeriodIndex partial string indexing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 PeriodIndex now supports partial string slicing with non-monotonic indexes.
-
-.. versionadded:: 1.1.0
 
 You can pass in dates and strings to ``Series`` and ``DataFrame`` with ``PeriodIndex``, in the same manner as ``DatetimeIndex``. For details, refer to :ref:`DatetimeIndex Partial String Indexing <timeseries.partialindexing>`.
 
@@ -2488,8 +2508,6 @@ To remove time zone information, use ``tz_localize(None)`` or ``tz_convert(None)
 Fold
 ~~~~
 
-.. versionadded:: 1.1.0
-
 For ambiguous times, pandas supports explicitly specifying the keyword-only fold argument.
 Due to daylight saving time, one wall clock time can occur twice when shifting
 from summer to winter time; fold describes whether the datetime-like corresponds
@@ -2544,10 +2562,10 @@ twice within one day ("clocks fall back"). The following options are available:
 
 This will fail as there are ambiguous times (``'11/06/2011 01:00'``)
 
-.. code-block:: ipython
+.. ipython:: python
+   :okexcept:
 
-   In [2]: rng_hourly.tz_localize('US/Eastern')
-   AmbiguousTimeError: Cannot infer dst time from Timestamp('2011-11-06 01:00:00'), try using the 'ambiguous' argument
+   rng_hourly.tz_localize('US/Eastern')
 
 Handle these ambiguous times by specifying the following.
 
@@ -2579,10 +2597,10 @@ can be controlled by the ``nonexistent`` argument. The following options are ava
 
 Localization of nonexistent times will raise an error by default.
 
-.. code-block:: ipython
+.. ipython:: python
+   :okexcept:
 
-   In [2]: dti.tz_localize('Europe/Warsaw')
-   NonExistentTimeError: 2015-03-29 02:30:00
+   dti.tz_localize('Europe/Warsaw')
 
 Transform nonexistent times to ``NaT`` or shift the times.
 

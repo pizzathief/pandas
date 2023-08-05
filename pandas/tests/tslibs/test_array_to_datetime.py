@@ -71,7 +71,9 @@ def test_parsing_non_iso_timezone_offset():
     dt_string = "01-01-2013T00:00:00.000000000+0000"
     arr = np.array([dt_string], dtype=object)
 
-    result, result_tz = tslib.array_to_datetime(arr)
+    with tm.assert_produces_warning(None):
+        # GH#50949 should not get tzlocal-deprecation warning here
+        result, result_tz = tslib.array_to_datetime(arr)
     expected = np.array([np.datetime64("2013-01-01 00:00:00.000000000")])
 
     tm.assert_numpy_array_equal(result, expected)
@@ -83,7 +85,9 @@ def test_parsing_different_timezone_offsets():
     data = ["2015-11-18 15:30:00+05:30", "2015-11-18 15:30:00+06:30"]
     data = np.array(data, dtype=object)
 
-    result, result_tz = tslib.array_to_datetime(data)
+    msg = "parsing datetimes with mixed time zones will raise a warning"
+    with tm.assert_produces_warning(FutureWarning, match=msg):
+        result, result_tz = tslib.array_to_datetime(data)
     expected = np.array(
         [
             datetime(2015, 11, 18, 15, 30, tzinfo=tzoffset(None, 19800)),
@@ -126,7 +130,7 @@ def test_coerce_outside_ns_bounds(invalid_date, errors):
     kwargs = {"values": arr, "errors": errors}
 
     if errors == "raise":
-        msg = "Out of bounds .* present at position 0"
+        msg = "^Out of bounds nanosecond timestamp: .*, at position 0$"
 
         with pytest.raises(ValueError, match=msg):
             tslib.array_to_datetime(**kwargs)
@@ -171,9 +175,7 @@ def test_to_datetime_barely_out_of_bounds():
     # Close enough to bounds that dropping nanos
     # would result in an in-bounds datetime.
     arr = np.array(["2262-04-11 23:47:16.854775808"], dtype=object)
-    msg = (
-        "Out of bounds nanosecond timestamp: 2262-04-11 23:47:16 present at position 0"
-    )
+    msg = "^Out of bounds nanosecond timestamp: 2262-04-11 23:47:16, at position 0$"
 
     with pytest.raises(tslib.OutOfBoundsDatetime, match=msg):
         tslib.array_to_datetime(arr)

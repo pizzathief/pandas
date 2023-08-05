@@ -32,7 +32,6 @@ class TestCategoricalIndexingWithFactor:
         tm.assert_numpy_array_equal(subf._codes, np.array([2, 2, 2], dtype=np.int8))
 
     def test_setitem(self, factor):
-
         # int/positional
         c = factor.copy()
         c[0] = "b"
@@ -104,12 +103,11 @@ class TestCategoricalIndexingWithFactor:
         assert cat[1] == (0, 1)
 
     def test_setitem_listlike(self):
-
         # GH#9469
         # properly coerce the input indexers
-        np.random.seed(1)
+
         cat = Categorical(
-            np.random.randint(0, 5, size=150000).astype(np.int8)
+            np.random.default_rng(2).integers(0, 5, size=150000).astype(np.int8)
         ).add_categories([-1000])
         indexer = np.array([100000]).astype(np.int64)
         cat[indexer] = -1000
@@ -131,11 +129,12 @@ class TestCategoricalIndexing:
         tm.assert_categorical_equal(sliced, expected)
 
     def test_getitem_listlike(self):
-
         # GH 9469
         # properly coerce the input indexers
-        np.random.seed(1)
-        c = Categorical(np.random.randint(0, 5, size=150000).astype(np.int8))
+
+        c = Categorical(
+            np.random.default_rng(2).integers(0, 5, size=150000).astype(np.int8)
+        )
         result = c.codes[np.array([100000]).astype(np.int64)]
         expected = c[np.array([100000]).astype(np.int64)].codes
         tm.assert_numpy_array_equal(result, expected)
@@ -367,6 +366,7 @@ def non_coercible_categorical(monkeypatch):
     ValueError
         When Categorical.__array__ is called.
     """
+
     # TODO(Categorical): identify other places where this may be
     # useful and move to a conftest.py
     def array(self, dtype=None):

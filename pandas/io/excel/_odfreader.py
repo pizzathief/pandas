@@ -27,23 +27,29 @@ if TYPE_CHECKING:
 
 @doc(storage_options=_shared_docs["storage_options"])
 class ODFReader(BaseExcelReader):
-    """
-    Read tables out of OpenDocument formatted files.
-
-    Parameters
-    ----------
-    filepath_or_buffer : str, path to be parsed or
-        an open readable stream.
-    {storage_options}
-    """
-
     def __init__(
         self,
         filepath_or_buffer: FilePath | ReadBuffer[bytes],
-        storage_options: StorageOptions = None,
+        storage_options: StorageOptions | None = None,
+        engine_kwargs: dict | None = None,
     ) -> None:
+        """
+        Read tables out of OpenDocument formatted files.
+
+        Parameters
+        ----------
+        filepath_or_buffer : str, path to be parsed or
+            an open readable stream.
+        {storage_options}
+        engine_kwargs : dict, optional
+            Arbitrary keyword arguments passed to excel engine.
+        """
         import_optional_dependency("odf")
-        super().__init__(filepath_or_buffer, storage_options=storage_options)
+        super().__init__(
+            filepath_or_buffer,
+            storage_options=storage_options,
+            engine_kwargs=engine_kwargs,
+        )
 
     @property
     def _workbook_class(self):
@@ -51,10 +57,12 @@ class ODFReader(BaseExcelReader):
 
         return OpenDocument
 
-    def load_workbook(self, filepath_or_buffer: FilePath | ReadBuffer[bytes]):
+    def load_workbook(
+        self, filepath_or_buffer: FilePath | ReadBuffer[bytes], engine_kwargs
+    ):
         from odf.opendocument import load
 
-        return load(filepath_or_buffer)
+        return load(filepath_or_buffer, **engine_kwargs)
 
     @property
     def empty_value(self) -> str:
@@ -146,8 +154,7 @@ class ODFReader(BaseExcelReader):
                 # add blank rows to our table
                 table.extend([[self.empty_value]] * empty_rows)
                 empty_rows = 0
-                for _ in range(row_repeat):
-                    table.append(table_row)
+                table.extend(table_row for _ in range(row_repeat))
             if file_rows_needed is not None and len(table) >= file_rows_needed:
                 break
 

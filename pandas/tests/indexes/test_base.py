@@ -8,15 +8,15 @@ import re
 import numpy as np
 import pytest
 
-from pandas.compat import (
-    IS64,
-    pa_version_under7p0,
-)
-from pandas.errors import (
-    InvalidIndexError,
-    PerformanceWarning,
-)
+from pandas.compat import IS64
+from pandas.errors import InvalidIndexError
 from pandas.util._test_decorators import async_mark
+
+from pandas.core.dtypes.common import (
+    is_any_real_numeric_dtype,
+    is_numeric_dtype,
+    is_object_dtype,
+)
 
 import pandas as pd
 from pandas import (
@@ -32,7 +32,6 @@ from pandas import (
     period_range,
 )
 import pandas._testing as tm
-from pandas.core.api import NumericIndex
 from pandas.core.indexes.api import (
     Index,
     MultiIndex,
@@ -40,15 +39,12 @@ from pandas.core.indexes.api import (
     ensure_index,
     ensure_index_from_sequences,
 )
-from pandas.tests.indexes.common import Base
 
 
-class TestIndex(Base):
-    _index_cls = Index
-
+class TestIndex:
     @pytest.fixture
     def simple_index(self) -> Index:
-        return self._index_cls(list("abcde"))
+        return Index(list("abcde"))
 
     def test_can_hold_identifiers(self, simple_index):
         index = simple_index
@@ -62,22 +58,6 @@ class TestIndex(Base):
         with pytest.raises(ValueError, match="Multi-dimensional indexing"):
             # GH#30588 multi-dimensional indexing deprecated
             index[None, :]
-
-    def test_argsort(self, index):
-        with tm.maybe_produces_warning(
-            PerformanceWarning,
-            pa_version_under7p0 and getattr(index.dtype, "storage", "") == "pyarrow",
-            check_stacklevel=False,
-        ):
-            super().test_argsort(index)
-
-    def test_numpy_argsort(self, index):
-        with tm.maybe_produces_warning(
-            PerformanceWarning,
-            pa_version_under7p0 and getattr(index.dtype, "storage", "") == "pyarrow",
-            check_stacklevel=False,
-        ):
-            super().test_numpy_argsort(index)
 
     def test_constructor_regular(self, index):
         tm.assert_contains_all(index, index)
@@ -170,7 +150,7 @@ class TestIndex(Base):
         dts = ["1-1-1990", "2-1-1990", "3-1-1990", "4-1-1990", "5-1-1990"]
         expected = DatetimeIndex(dts, freq="MS")
 
-        df = DataFrame(np.random.rand(5, 3))
+        df = DataFrame(np.random.default_rng(2).random((5, 3)))
         df["date"] = dts
         result = DatetimeIndex(df["date"], freq="MS")
 
@@ -189,14 +169,14 @@ class TestIndex(Base):
     def test_constructor_int_dtype_nan(self):
         # see gh-15187
         data = [np.nan]
-        expected = NumericIndex(data, dtype=np.float64)
+        expected = Index(data, dtype=np.float64)
         result = Index(data, dtype="float")
         tm.assert_index_equal(result, expected)
 
     @pytest.mark.parametrize(
         "klass,dtype,na_val",
         [
-            (NumericIndex, np.float64, np.nan),
+            (Index, np.float64, np.nan),
             (DatetimeIndex, "datetime64[ns]", pd.NaT),
         ],
     )
@@ -304,7 +284,6 @@ class TestIndex(Base):
         "klass",
         [
             Index,
-            NumericIndex,
             CategoricalIndex,
             DatetimeIndex,
             TimedeltaIndex,
@@ -318,9 +297,9 @@ class TestIndex(Base):
     @pytest.mark.parametrize(
         "empty,klass",
         [
-            (PeriodIndex([], freq="B"), PeriodIndex),
-            (PeriodIndex(iter([]), freq="B"), PeriodIndex),
-            (PeriodIndex((_ for _ in []), freq="B"), PeriodIndex),
+            (PeriodIndex([], freq="D"), PeriodIndex),
+            (PeriodIndex(iter([]), freq="D"), PeriodIndex),
+            (PeriodIndex((_ for _ in []), freq="D"), PeriodIndex),
             (RangeIndex(step=1), RangeIndex),
             (MultiIndex(levels=[[1, 2], ["blue", "red"]], codes=[[], []]), MultiIndex),
         ],
@@ -398,7 +377,6 @@ class TestIndex(Base):
         assert not Index(["a", "b", "c"]).equals(comp)
 
     def test_identical(self):
-
         # index
         i1 = Index(["a", "b", "c"])
         i2 = Index(["a", "b", "c"])
@@ -482,7 +460,7 @@ class TestIndex(Base):
     @pytest.mark.parametrize("dtype", [np.int_, np.bool_])
     def test_empty_fancy(self, index, dtype):
         empty_arr = np.array([], dtype=dtype)
-        empty_index = type(index)([])
+        empty_index = type(index)([], dtype=index.dtype)
 
         assert index[[]].identical(empty_index)
         assert index[empty_arr].identical(empty_index)
@@ -496,7 +474,7 @@ class TestIndex(Base):
         # DatetimeIndex is excluded, because it overrides getitem and should
         # be tested separately.
         empty_farr = np.array([], dtype=np.float_)
-        empty_index = type(index)([])
+        empty_index = type(index)([], dtype=index.dtype)
 
         assert index[[]].identical(empty_index)
         # np.ndarray only accepts ndarray of int & bool dtypes, so should Index
@@ -554,8 +532,9 @@ class TestIndex(Base):
 
     def test_map_tseries_indices_accsr_return_index(self):
         date_index = tm.makeDateIndex(24, freq="h", name="hourly")
-        expected = Index(list(range(24)), dtype=np.int64, name="hourly")
-        tm.assert_index_equal(expected, date_index.map(lambda x: x.hour), exact=True)
+        result = date_index.map(lambda x: x.hour)
+        expected = Index(np.arange(24, dtype="int64"), name="hourly")
+        tm.assert_index_equal(result, expected, exact=True)
 
     @pytest.mark.parametrize(
         "mapper",
@@ -578,6 +557,7 @@ class TestIndex(Base):
             lambda values, index: Series(values, index),
         ],
     )
+    @pytest.mark.filterwarnings(r"ignore:PeriodDtype\[B\] is deprecated:FutureWarning")
     def test_map_dictlike(self, index, mapper, request):
         # GH 12756
         if isinstance(index, CategoricalIndex):
@@ -587,17 +567,15 @@ class TestIndex(Base):
             # Cannot map duplicated index
             return
 
-        rng = np.arange(len(index), 0, -1)
+        rng = np.arange(len(index), 0, -1, dtype=np.int64)
 
         if index.empty:
             # to match proper result coercion for uints
             expected = Index([])
-        elif index._is_backward_compat_public_numeric_index:
+        elif is_numeric_dtype(index.dtype):
             expected = index._constructor(rng, dtype=index.dtype)
         elif type(index) is Index and index.dtype != object:
             # i.e. EA-backed, for now just Nullable
-            expected = Index(rng, dtype=index.dtype)
-        elif index.dtype.kind == "u":
             expected = Index(rng, dtype=index.dtype)
         else:
             expected = Index(rng)
@@ -636,7 +614,9 @@ class TestIndex(Base):
         left = Index([], name="foo")
         right = Index([1, 2, 3], name=name)
 
-        result = left.append(right)
+        msg = "The behavior of array concatenation with empty entries is deprecated"
+        with tm.assert_produces_warning(FutureWarning, match=msg):
+            result = left.append(right)
         assert result.name == expected
 
     @pytest.mark.parametrize(
@@ -657,7 +637,7 @@ class TestIndex(Base):
         indirect=["index"],
     )
     def test_is_numeric(self, index, expected):
-        assert index.is_numeric() is expected
+        assert is_any_real_numeric_dtype(index) is expected
 
     @pytest.mark.parametrize(
         "index, expected",
@@ -677,7 +657,7 @@ class TestIndex(Base):
         indirect=["index"],
     )
     def test_is_object(self, index, expected):
-        assert index.is_object() is expected
+        assert is_object_dtype(index) is expected
 
     def test_summary(self, index):
         index._summary()
@@ -801,6 +781,7 @@ class TestIndex(Base):
             with pytest.raises(KeyError, match=msg):
                 removed.drop(drop_me)
 
+    @pytest.mark.filterwarnings(r"ignore:PeriodDtype\[B\] is deprecated:FutureWarning")
     def test_drop_with_duplicates_in_index(self, index):
         # GH38051
         if len(index) == 0 or isinstance(index, MultiIndex):
@@ -865,20 +846,24 @@ class TestIndex(Base):
                 np.array([False, False]),
             )
 
-    def test_isin_nan_common_float64(self, nulls_fixture):
+    def test_isin_nan_common_float64(self, nulls_fixture, float_numpy_dtype):
+        dtype = float_numpy_dtype
 
         if nulls_fixture is pd.NaT or nulls_fixture is pd.NA:
             # Check 1) that we cannot construct a float64 Index with this value
             #  and 2) that with an NaN we do not have .isin(nulls_fixture)
-            msg = "data is not compatible with NumericIndex"
-            with pytest.raises(ValueError, match=msg):
-                NumericIndex([1.0, nulls_fixture], dtype=np.float64)
+            msg = (
+                r"float\(\) argument must be a string or a (real )?number, "
+                f"not {repr(type(nulls_fixture).__name__)}"
+            )
+            with pytest.raises(TypeError, match=msg):
+                Index([1.0, nulls_fixture], dtype=dtype)
 
-            idx = NumericIndex([1.0, np.nan], dtype=np.float64)
+            idx = Index([1.0, np.nan], dtype=dtype)
             assert not idx.isin([nulls_fixture]).any()
             return
 
-        idx = NumericIndex([1.0, nulls_fixture], dtype=np.float64)
+        idx = Index([1.0, nulls_fixture], dtype=dtype)
         res = idx.isin([np.nan])
         tm.assert_numpy_array_equal(res, np.array([False, True]))
 
@@ -891,8 +876,7 @@ class TestIndex(Base):
         "index",
         [
             Index(["qux", "baz", "foo", "bar"]),
-            # float64 Index overrides isin, so must be checked separately
-            NumericIndex([1.0, 2.0, 3.0, 4.0], dtype=np.float64),
+            Index([1.0, 2.0, 3.0, 4.0], dtype=np.float64),
         ],
     )
     def test_isin_level_kwarg(self, level, index):
@@ -1054,7 +1038,7 @@ class TestIndex(Base):
         assert index[[0, 1]].identical(Index([1, 2], dtype=np.object_))
 
     def test_outer_join_sort(self):
-        left_index = Index(np.random.permutation(15))
+        left_index = Index(np.random.default_rng(2).permutation(15))
         right_index = tm.makeDateIndex(10)
 
         with tm.assert_produces_warning(RuntimeWarning):
@@ -1145,7 +1129,7 @@ class TestIndex(Base):
         # GH7774
         dtype = any_real_numpy_dtype
         index = Index(list("abc"))
-        labels = NumericIndex([], dtype=dtype)
+        labels = Index([], dtype=dtype)
         assert index.reindex(labels)[0].dtype == dtype
 
     def test_reindex_no_type_preserve_target_empty_mi(self):
@@ -1280,20 +1264,53 @@ class TestIndex(Base):
         result = index.sortlevel(ascending=False)
         tm.assert_index_equal(result[0], expected)
 
+    def test_sortlevel_na_position(self):
+        # GH#51612
+        idx = Index([1, np.nan])
+        result = idx.sortlevel(na_position="first")[0]
+        expected = Index([np.nan, 1])
+        tm.assert_index_equal(result, expected)
 
-class TestMixedIntIndex(Base):
+    @pytest.mark.parametrize(
+        "periods, expected_results",
+        [
+            (1, [np.nan, 10, 10, 10, 10]),
+            (2, [np.nan, np.nan, 20, 20, 20]),
+            (3, [np.nan, np.nan, np.nan, 30, 30]),
+        ],
+    )
+    def test_index_diff(self, periods, expected_results):
+        # GH#19708
+        idx = Index([10, 20, 30, 40, 50])
+        result = idx.diff(periods)
+        expected = Index(expected_results)
+
+        tm.assert_index_equal(result, expected)
+
+    @pytest.mark.parametrize(
+        "decimals, expected_results",
+        [
+            (0, [1.0, 2.0, 3.0]),
+            (1, [1.2, 2.3, 3.5]),
+            (2, [1.23, 2.35, 3.46]),
+        ],
+    )
+    def test_index_round(self, decimals, expected_results):
+        # GH#19708
+        idx = Index([1.234, 2.345, 3.456])
+        result = idx.round(decimals)
+        expected = Index(expected_results)
+
+        tm.assert_index_equal(result, expected)
+
+
+class TestMixedIntIndex:
     # Mostly the tests from common.py for which the results differ
     # in py2 and py3 because ints and strings are uncomparable in py3
     # (GH 13514)
-    _index_cls = Index
-
     @pytest.fixture
     def simple_index(self) -> Index:
-        return self._index_cls([0, "a", 1, "b", 2, "c"])
-
-    @pytest.fixture(params=[[0, "a", 1, "b", 2, "c"]], ids=["mixedIndex"])
-    def index(self, request):
-        return Index(request.param)
+        return Index([0, "a", 1, "b", 2, "c"])
 
     def test_argsort(self, simple_index):
         index = simple_index
@@ -1591,11 +1608,9 @@ def test_validate_1d_input(dtype):
     "klass, extra_kwargs",
     [
         [Index, {}],
-        [lambda x: NumericIndex(x, np.int64), {}],
-        [lambda x: NumericIndex(x, np.float64), {}],
+        *[[lambda x: Index(x, dtype=dtyp), {}] for dtyp in tm.ALL_REAL_NUMPY_DTYPES],
         [DatetimeIndex, {}],
         [TimedeltaIndex, {}],
-        [NumericIndex, {}],
         [PeriodIndex, {"freq": "Y"}],
     ],
 )
@@ -1604,14 +1619,6 @@ def test_construct_from_memoryview(klass, extra_kwargs):
     result = klass(memoryview(np.arange(2000, 2005)), **extra_kwargs)
     expected = klass(list(range(2000, 2005)), **extra_kwargs)
     tm.assert_index_equal(result, expected, exact=True)
-
-
-def test_get_attributes_dict_deprecated():
-    # https://github.com/pandas-dev/pandas/pull/44028
-    idx = Index([1, 2, 3, 1])
-    with tm.assert_produces_warning(DeprecationWarning):
-        attrs = idx._get_attributes_dict()
-    assert attrs == {"name": None}
 
 
 @pytest.mark.parametrize("op", [operator.lt, operator.gt])

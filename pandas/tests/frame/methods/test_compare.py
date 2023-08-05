@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from pandas.compat import is_numpy_dev
+from pandas.compat.numpy import np_version_gte1p25
 
 import pandas as pd
 import pandas._testing as tm
@@ -170,14 +170,20 @@ def test_compare_multi_index(align_axis):
 
 def test_compare_unaligned_objects():
     # test DataFrames with different indices
-    msg = "Can only compare identically-labeled DataFrame objects"
+    msg = (
+        r"Can only compare identically-labeled \(both index and columns\) DataFrame "
+        "objects"
+    )
     with pytest.raises(ValueError, match=msg):
         df1 = pd.DataFrame([1, 2, 3], index=["a", "b", "c"])
         df2 = pd.DataFrame([1, 2, 3], index=["a", "b", "d"])
         df1.compare(df2)
 
     # test DataFrames with different shapes
-    msg = "Can only compare identically-labeled DataFrame objects"
+    msg = (
+        r"Can only compare identically-labeled \(both index and columns\) DataFrame "
+        "objects"
+    )
     with pytest.raises(ValueError, match=msg):
         df1 = pd.DataFrame(np.ones((3, 3)))
         df2 = pd.DataFrame(np.zeros((2, 1)))
@@ -259,7 +265,11 @@ def test_compare_ea_and_np_dtype(val1, val2):
             ("b", "other"): np.nan,
         }
     )
-    if val1 is pd.NA and is_numpy_dev:
+    if val1 is pd.NA and val2 is pd.NA:
+        # GH#18463 TODO: is this really the desired behavior?
+        expected.loc[1, ("a", "self")] = np.nan
+
+    if val1 is pd.NA and np_version_gte1p25:
         # can't compare with numpy array if it contains pd.NA
         with pytest.raises(TypeError, match="boolean value of NA is ambiguous"):
             result = df1.compare(df2, keep_shape=True)

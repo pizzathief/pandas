@@ -155,10 +155,10 @@ functionality below.
    reusing this function can create a significant performance hit. If you need
    to use the operation over several datasets, use a list comprehension.
 
-::
+   .. code-block:: python
 
-   frames = [ process_your_file(f) for f in files ]
-   result = pd.concat(frames)
+      frames = [process_your_file(f) for f in files]
+      result = pd.concat(frames)
 
 .. note::
 
@@ -510,12 +510,6 @@ all standard database join operations between ``DataFrame`` or named ``Series`` 
       dataset.
     * "many_to_many" or "m:m": allowed, but does not result in checks.
 
-.. note::
-
-   Support for specifying index levels as the ``on``, ``left_on``, and
-   ``right_on`` parameters was added in version 0.23.0.
-   Support for merging named ``Series`` objects was added in version 0.24.0.
-
 The return type will be the same as ``left``. If ``left`` is a ``DataFrame`` or named ``Series``
 and ``right`` is a subclass of ``DataFrame``, the return type will still be ``DataFrame``.
 
@@ -738,17 +732,12 @@ In the following example, there are duplicate values of ``B`` in the right
 ``DataFrame``. As this is not a one-to-one merge -- as specified in the
 ``validate`` argument -- an exception will be raised.
 
-
 .. ipython:: python
+   :okexcept:
 
-  left = pd.DataFrame({"A": [1, 2], "B": [1, 2]})
-  right = pd.DataFrame({"A": [4, 5, 6], "B": [2, 2, 2]})
-
-.. code-block:: ipython
-
-  In [53]: result = pd.merge(left, right, on="B", how="outer", validate="one_to_one")
-  ...
-  MergeError: Merge keys are not unique in right dataset; not a one-to-one merge
+   left = pd.DataFrame({"A": [1, 2], "B": [1, 2]})
+   right = pd.DataFrame({"A": [4, 5, 6], "B": [2, 2, 2]})
+   result = pd.merge(left, right, on="B", how="outer", validate="one_to_one")
 
 If the user is aware of the duplicates in the right ``DataFrame`` but wants to
 ensure there are no duplicates in the left DataFrame, one can use the
@@ -1459,8 +1448,6 @@ Comparing objects
 
 The :meth:`~Series.compare` and :meth:`~DataFrame.compare` methods allow you to
 compare two DataFrame or Series, respectively, and summarize their differences.
-
-This feature was added in :ref:`V1.1.0 <whatsnew_110.dataframe_or_series_comparing>`.
 
 For example, you might want to compare two ``DataFrame`` and stack their differences
 side by side.

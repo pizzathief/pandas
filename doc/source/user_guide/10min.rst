@@ -16,6 +16,16 @@ Customarily, we import as follows:
    import numpy as np
    import pandas as pd
 
+Basic data structures in pandas
+-------------------------------
+
+Pandas provides two types of classes for handling data:
+
+1. :class:`Series`: a one-dimensional labeled array holding data of any type
+    such as integers, strings, Python objects etc.
+2. :class:`DataFrame`: a two-dimensional data structure that holds data like
+   a two-dimension array or a table with rows and columns.
+
 Object creation
 ---------------
 
@@ -569,7 +579,7 @@ columns:
 
 .. ipython:: python
 
-   stacked = df2.stack()
+   stacked = df2.stack(future_stack=True)
    stacked
 
 With a "stacked" DataFrame or Series (having a :class:`MultiIndex` as the
@@ -702,11 +712,11 @@ Sorting is per order in the categories, not lexical order:
 
     df.sort_values(by="grade")
 
-Grouping by a categorical column also shows empty categories:
+Grouping by a categorical column with ``observed=False`` also shows empty categories:
 
 .. ipython:: python
 
-    df.groupby("grade").size()
+    df.groupby("grade", observed=False).size()
 
 
 Plotting

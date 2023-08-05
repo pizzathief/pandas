@@ -3,14 +3,15 @@ Printing tools.
 """
 from __future__ import annotations
 
+from collections.abc import (
+    Iterable,
+    Mapping,
+    Sequence,
+)
 import sys
 from typing import (
     Any,
     Callable,
-    Dict,
-    Iterable,
-    Mapping,
-    Sequence,
     TypeVar,
     Union,
 )
@@ -43,7 +44,6 @@ def adjoin(space: int, *lists: list[str], **kwargs) -> str:
     strlen = kwargs.pop("strlen", len)
     justfunc = kwargs.pop("justfunc", justify)
 
-    out_lines = []
     newLists = []
     lengths = [max(map(strlen, x)) + space for x in lists[:-1]]
     # not the last one
@@ -54,9 +54,7 @@ def adjoin(space: int, *lists: list[str], **kwargs) -> str:
         nl = ([" " * lengths[i]] * (maxLen - len(lst))) + nl
         newLists.append(nl)
     toJoin = zip(*newLists)
-    for lines in toJoin:
-        out_lines.append("".join(lines))
-    return "\n".join(out_lines)
+    return "\n".join("".join(lines) for lines in toJoin)
 
 
 def justify(texts: Iterable[str], max_len: int, mode: str = "right") -> list[str]:
@@ -259,19 +257,19 @@ def enable_data_resource_formatter(enable: bool) -> None:
         if mimetype not in formatters:
             # define tableschema formatter
             from IPython.core.formatters import BaseFormatter
+            from traitlets import ObjectName
 
             class TableSchemaFormatter(BaseFormatter):
-                print_method = "_repr_data_resource_"
+                print_method = ObjectName("_repr_data_resource_")
                 _return_type = (dict,)
 
             # register it:
             formatters[mimetype] = TableSchemaFormatter()
         # enable it if it's been disabled:
         formatters[mimetype].enabled = True
-    else:
-        # unregister tableschema mime-type
-        if mimetype in formatters:
-            formatters[mimetype].enabled = False
+    # unregister tableschema mime-type
+    elif mimetype in formatters:
+        formatters[mimetype].enabled = False
 
 
 def default_pprint(thing: Any, max_seq_items: int | None = None) -> str:
@@ -351,7 +349,6 @@ def format_object_summary(
     def _extend_line(
         s: str, line: str, value: str, display_width: int, next_line_prefix: str
     ) -> tuple[str, str]:
-
         if adj.len(line.rstrip()) + adj.len(value.rstrip()) >= display_width:
             s += line.rstrip()
             line = next_line_prefix
@@ -376,7 +373,6 @@ def format_object_summary(
         last = formatter(obj[-1])
         summary = f"[{first}, {last}]{close}"
     else:
-
         if max_seq_items == 1:
             # If max_seq_items=1 show only last element
             head = []
@@ -414,12 +410,14 @@ def format_object_summary(
             # max_space
             max_space = display_width - len(space2)
             value = tail[0]
-            for max_items in reversed(range(1, len(value) + 1)):
-                pprinted_seq = _pprint_seq(value, max_seq_items=max_items)
+            max_items = 1
+            for num_items in reversed(range(1, len(value) + 1)):
+                pprinted_seq = _pprint_seq(value, max_seq_items=num_items)
                 if len(pprinted_seq) < max_space:
-                    head = [_pprint_seq(x, max_seq_items=max_items) for x in head]
-                    tail = [_pprint_seq(x, max_seq_items=max_items) for x in tail]
+                    max_items = num_items
                     break
+            head = [_pprint_seq(x, max_seq_items=max_items) for x in head]
+            tail = [_pprint_seq(x, max_seq_items=max_items) for x in tail]
 
         summary = ""
         line = space2
@@ -498,7 +496,7 @@ def _justify(
     return head_tuples, tail_tuples
 
 
-class PrettyDict(Dict[_KT, _VT]):
+class PrettyDict(dict[_KT, _VT]):
     """Dict extension to support abbreviated __repr__"""
 
     def __repr__(self) -> str:

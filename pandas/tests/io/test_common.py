@@ -50,7 +50,6 @@ HERE = os.path.abspath(os.path.dirname(__file__))
 
 
 # https://github.com/cython/cython/issues/1720
-@pytest.mark.filterwarnings("ignore:can't resolve package:ImportWarning")
 class TestCommonIOCapabilities:
     data1 = """index,A,B,C,D
 foo,2,3,4,5
@@ -148,9 +147,8 @@ Look,a snake,🐍"""
             assert result == data.encode("utf-8")
 
     # Test that pyarrow can handle a file opened with get_handle
-    @td.skip_if_no("pyarrow")
     def test_get_handle_pyarrow_compat(self):
-        from pyarrow import csv
+        pa_csv = pytest.importorskip("pyarrow.csv")
 
         # Test latin1, ucs-2, and ucs-4 chars
         data = """a,b,c
@@ -162,7 +160,7 @@ Look,a snake,🐍"""
         )
         s = StringIO(data)
         with icom.get_handle(s, "rb", is_text=False) as handles:
-            df = csv.read_csv(handles.handle).to_pandas()
+            df = pa_csv.read_csv(handles.handle).to_pandas()
             tm.assert_frame_equal(df, expected)
             assert not s.closed
 
@@ -317,9 +315,6 @@ Look,a snake,🐍"""
             ),
         ],
     )
-    @pytest.mark.filterwarnings(  # pytables np.object usage
-        "ignore:`np.object` is a deprecated alias:DeprecationWarning"
-    )
     def test_read_fspath_all(self, reader, module, path, datapath):
         pytest.importorskip(module)
         path = datapath(*path)
@@ -334,7 +329,6 @@ Look,a snake,🐍"""
         else:
             tm.assert_frame_equal(result, expected)
 
-    @pytest.mark.filterwarnings("ignore:In future versions `DataFrame.to_latex`")
     @pytest.mark.parametrize(
         "writer_name, writer_kwargs, module",
         [
@@ -349,6 +343,8 @@ Look,a snake,🐍"""
         ],
     )
     def test_write_fspath_all(self, writer_name, writer_kwargs, module):
+        if writer_name in ["to_latex"]:  # uses Styler implementation
+            pytest.importorskip("jinja2")
         p1 = tm.ensure_clean("string")
         p2 = tm.ensure_clean("fspath")
         df = pd.DataFrame({"A": [1, 2]})
@@ -372,9 +368,6 @@ Look,a snake,🐍"""
                     expected = f_path.read()
                     assert result == expected
 
-    @pytest.mark.filterwarnings(  # pytables np.object usage
-        "ignore:`np.object` is a deprecated alias:DeprecationWarning"
-    )
     def test_write_fspath_hdf5(self):
         # Same test as write_fspath_all, except HDF5 files aren't
         # necessarily byte-for-byte identical for a given dataframe, so we'll
@@ -417,7 +410,7 @@ class TestMMapWrapper:
         with pytest.raises(err, match=msg):
             icom._maybe_memory_map(non_file, True)
 
-        with open(mmap_file) as target:
+        with open(mmap_file, encoding="utf-8") as target:
             pass
 
         msg = "I/O operation on closed file"
@@ -425,7 +418,7 @@ class TestMMapWrapper:
             icom._maybe_memory_map(target, True)
 
     def test_next(self, mmap_file):
-        with open(mmap_file) as target:
+        with open(mmap_file, encoding="utf-8") as target:
             lines = target.readlines()
 
             with icom.get_handle(

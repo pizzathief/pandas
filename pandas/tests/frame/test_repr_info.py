@@ -31,7 +31,10 @@ class TestDataFrameReprInfoEtc:
         lets = list("ACDEFGHIJKLMNOP")
         slen = 50
         nseqs = 1000
-        words = [[np.random.choice(lets) for x in range(slen)] for _ in range(nseqs)]
+        words = [
+            [np.random.default_rng(2).choice(lets) for x in range(slen)]
+            for _ in range(nseqs)
+        ]
         df = DataFrame(words).astype("U1")
         assert (df.dtypes == object).all()
 
@@ -43,7 +46,7 @@ class TestDataFrameReprInfoEtc:
     def test_repr_unicode_level_names(self, frame_or_series):
         index = MultiIndex.from_tuples([(0, 0), (1, 1)], names=["\u0394", "i1"])
 
-        obj = DataFrame(np.random.randn(2, 4), index=index)
+        obj = DataFrame(np.random.default_rng(2).standard_normal((2, 4)), index=index)
         obj = tm.get_obj(obj, frame_or_series)
         repr(obj)
 
@@ -153,7 +156,11 @@ NaT   4"""
     def test_repr_mixed_big(self):
         # big mixed
         biggie = DataFrame(
-            {"A": np.random.randn(200), "B": tm.makeStringIndex(200)}, index=range(200)
+            {
+                "A": np.random.default_rng(2).standard_normal(200),
+                "B": tm.makeStringIndex(200),
+            },
+            index=range(200),
         )
         biggie.loc[:20, "A"] = np.nan
         biggie.loc[:20, "B"] = np.nan
@@ -256,7 +263,10 @@ NaT   4"""
             bytes(df)
 
     def test_very_wide_info_repr(self):
-        df = DataFrame(np.random.randn(10, 20), columns=tm.rands_array(10, 20))
+        df = DataFrame(
+            np.random.default_rng(2).standard_normal((10, 20)),
+            columns=np.array(["a" * 10] * 20, dtype=object),
+        )
         repr(df)
 
     def test_repr_column_name_unicode_truncation_bug(self):
@@ -280,22 +290,23 @@ NaT   4"""
         with option_context("display.max_columns", 20):
             assert "StringCol" in repr(df)
 
-    @pytest.mark.filterwarnings(
-        "ignore:.*DataFrame.to_latex` is expected to utilise:FutureWarning"
-    )
     def test_latex_repr(self):
-        result = r"""\begin{tabular}{llll}
+        pytest.importorskip("jinja2")
+        expected = r"""\begin{tabular}{llll}
 \toprule
-{} &         0 &  1 &  2 \\
+ & 0 & 1 & 2 \\
 \midrule
-0 &  $\alpha$ &  b &  c \\
-1 &         1 &  2 &  3 \\
+0 & $\alpha$ & b & c \\
+1 & 1 & 2 & 3 \\
 \bottomrule
 \end{tabular}
 """
-        with option_context("display.latex.escape", False, "display.latex.repr", True):
+        with option_context(
+            "styler.format.escape", None, "styler.render.repr", "latex"
+        ):
             df = DataFrame([[r"$\alpha$", "b", "c"], [1, 2, 3]])
-            assert result == df._repr_latex_()
+            result = df._repr_latex_()
+            assert result == expected
 
         # GH 12182
         assert df._repr_latex_() is None
@@ -334,7 +345,7 @@ NaT   4"""
 
     def test_frame_to_string_with_periodindex(self):
         index = PeriodIndex(["2011-1", "2011-2", "2011-3"], freq="M")
-        frame = DataFrame(np.random.randn(3, 4), index=index)
+        frame = DataFrame(np.random.default_rng(2).standard_normal((3, 4)), index=index)
 
         # it works!
         frame.to_string()
@@ -358,6 +369,77 @@ NaT   4"""
         expected = repr(df)
         df = df.iloc[:, :5]
         result = repr(df)
+        assert result == expected
+
+    def test_to_records_no_typeerror_in_repr(self):
+        # GH 48526
+        df = DataFrame([["a", "b"], ["c", "d"], ["e", "f"]], columns=["left", "right"])
+        df["record"] = df[["left", "right"]].to_records()
+        expected = """  left right     record
+0    a     b  [0, a, b]
+1    c     d  [1, c, d]
+2    e     f  [2, e, f]"""
+        result = repr(df)
+        assert result == expected
+
+    def test_to_records_with_na_record_value(self):
+        # GH 48526
+        df = DataFrame(
+            [["a", np.nan], ["c", "d"], ["e", "f"]], columns=["left", "right"]
+        )
+        df["record"] = df[["left", "right"]].to_records()
+        expected = """  left right       record
+0    a   NaN  [0, a, nan]
+1    c     d    [1, c, d]
+2    e     f    [2, e, f]"""
+        result = repr(df)
+        assert result == expected
+
+    def test_to_records_with_na_record(self):
+        # GH 48526
+        df = DataFrame(
+            [["a", "b"], [np.nan, np.nan], ["e", "f"]], columns=[np.nan, "right"]
+        )
+        df["record"] = df[[np.nan, "right"]].to_records()
+        expected = """   NaN right         record
+0    a     b      [0, a, b]
+1  NaN   NaN  [1, nan, nan]
+2    e     f      [2, e, f]"""
+        result = repr(df)
+        assert result == expected
+
+    def test_to_records_with_inf_as_na_record(self):
+        # GH 48526
+        expected = """   NaN  inf         record
+0  NaN    b    [0, inf, b]
+1  NaN  NaN  [1, nan, nan]
+2    e    f      [2, e, f]"""
+        msg = "use_inf_as_na option is deprecated"
+        with tm.assert_produces_warning(FutureWarning, match=msg):
+            with option_context("use_inf_as_na", True):
+                df = DataFrame(
+                    [[np.inf, "b"], [np.nan, np.nan], ["e", "f"]],
+                    columns=[np.nan, np.inf],
+                )
+                df["record"] = df[[np.nan, np.inf]].to_records()
+                result = repr(df)
+        assert result == expected
+
+    def test_to_records_with_inf_record(self):
+        # GH 48526
+        expected = """   NaN  inf         record
+0  inf    b    [0, inf, b]
+1  NaN  NaN  [1, nan, nan]
+2    e    f      [2, e, f]"""
+        msg = "use_inf_as_na option is deprecated"
+        with tm.assert_produces_warning(FutureWarning, match=msg):
+            with option_context("use_inf_as_na", False):
+                df = DataFrame(
+                    [[np.inf, "b"], [np.nan, np.nan], ["e", "f"]],
+                    columns=[np.nan, np.inf],
+                )
+                df["record"] = df[[np.nan, np.inf]].to_records()
+                result = repr(df)
         assert result == expected
 
     def test_masked_ea_with_formatter(self):

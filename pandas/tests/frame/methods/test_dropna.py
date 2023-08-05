@@ -15,7 +15,7 @@ import pandas._testing as tm
 class TestDataFrameMissingData:
     def test_dropEmptyRows(self, float_frame):
         N = len(float_frame.index)
-        mat = np.random.randn(N)
+        mat = np.random.default_rng(2).standard_normal(N)
         mat[:5] = np.nan
 
         frame = DataFrame({"foo": mat}, index=float_frame.index)
@@ -39,7 +39,7 @@ class TestDataFrameMissingData:
 
     def test_dropIncompleteRows(self, float_frame):
         N = len(float_frame.index)
-        mat = np.random.randn(N)
+        mat = np.random.default_rng(2).standard_normal(N)
         mat[:5] = np.nan
 
         frame = DataFrame({"foo": mat}, index=float_frame.index)
@@ -65,7 +65,7 @@ class TestDataFrameMissingData:
         assert return_value is None
 
     def test_dropna(self):
-        df = DataFrame(np.random.randn(6, 4))
+        df = DataFrame(np.random.default_rng(2).standard_normal((6, 4)))
         df.iloc[:2, 2] = np.nan
 
         dropped = df.dropna(axis=1)
@@ -211,9 +211,9 @@ class TestDataFrameMissingData:
     def test_dropna_with_duplicate_columns(self):
         df = DataFrame(
             {
-                "A": np.random.randn(5),
-                "B": np.random.randn(5),
-                "C": np.random.randn(5),
+                "A": np.random.default_rng(2).standard_normal(5),
+                "B": np.random.default_rng(2).standard_normal(5),
+                "C": np.random.default_rng(2).standard_normal(5),
                 "D": ["a", "b", "c", "d", "e"],
             }
         )
@@ -272,3 +272,14 @@ class TestDataFrameMissingData:
 
         with pytest.raises(TypeError, match=msg):
             df.dropna(how=None, thresh=None)
+
+    @pytest.mark.parametrize("val", [1, 1.5])
+    def test_dropna_ignore_index(self, val):
+        # GH#31725
+        df = DataFrame({"a": [1, 2, val]}, index=[3, 2, 1])
+        result = df.dropna(ignore_index=True)
+        expected = DataFrame({"a": [1, 2, val]})
+        tm.assert_frame_equal(result, expected)
+
+        df.dropna(ignore_index=True, inplace=True)
+        tm.assert_frame_equal(df, expected)

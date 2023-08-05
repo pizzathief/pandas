@@ -4,19 +4,11 @@ import mmap
 from typing import (
     TYPE_CHECKING,
     Any,
-    Tuple,
     cast,
 )
 
 import numpy as np
 
-from pandas._typing import (
-    FilePath,
-    ReadBuffer,
-    Scalar,
-    StorageOptions,
-    WriteExcelBuffer,
-)
 from pandas.compat._optional import import_optional_dependency
 from pandas.util._decorators import doc
 
@@ -35,6 +27,15 @@ if TYPE_CHECKING:
     from openpyxl.descriptors.serialisable import Serialisable
     from openpyxl.workbook import Workbook
 
+    from pandas._typing import (
+        ExcelWriterIfSheetExists,
+        FilePath,
+        ReadBuffer,
+        Scalar,
+        StorageOptions,
+        WriteExcelBuffer,
+    )
+
 
 class OpenpyxlWriter(ExcelWriter):
     _engine = "openpyxl"
@@ -47,8 +48,8 @@ class OpenpyxlWriter(ExcelWriter):
         date_format: str | None = None,
         datetime_format: str | None = None,
         mode: str = "w",
-        storage_options: StorageOptions = None,
-        if_sheet_exists: str | None = None,
+        storage_options: StorageOptions | None = None,
+        if_sheet_exists: ExcelWriterIfSheetExists | None = None,
         engine_kwargs: dict[str, Any] | None = None,
         **kwargs,
     ) -> None:
@@ -70,11 +71,19 @@ class OpenpyxlWriter(ExcelWriter):
         if "r+" in self._mode:  # Load from existing workbook
             from openpyxl import load_workbook
 
-            self._book = load_workbook(self._handles.handle, **engine_kwargs)
+            try:
+                self._book = load_workbook(self._handles.handle, **engine_kwargs)
+            except TypeError:
+                self._handles.handle.close()
+                raise
             self._handles.handle.seek(0)
         else:
             # Create workbook object with default optimized_write=True.
-            self._book = Workbook(**engine_kwargs)
+            try:
+                self._book = Workbook(**engine_kwargs)
+            except TypeError:
+                self._handles.handle.close()
+                raise
 
             if self.book.worksheets:
                 self.book.remove(self.book.worksheets[0])
@@ -469,7 +478,7 @@ class OpenpyxlWriter(ExcelWriter):
             wks.title = sheet_name
 
         if validate_freeze_panes(freeze_panes):
-            freeze_panes = cast(Tuple[int, int], freeze_panes)
+            freeze_panes = cast(tuple[int, int], freeze_panes)
             wks.freeze_panes = wks.cell(
                 row=freeze_panes[0] + 1, column=freeze_panes[1] + 1
             )
@@ -495,7 +504,6 @@ class OpenpyxlWriter(ExcelWriter):
                     setattr(xcell, k, v)
 
             if cell.mergestart is not None and cell.mergeend is not None:
-
                 wks.merge_cells(
                     start_row=startrow + cell.row + 1,
                     start_column=startcol + cell.col + 1,
@@ -527,7 +535,8 @@ class OpenpyxlReader(BaseExcelReader):
     def __init__(
         self,
         filepath_or_buffer: FilePath | ReadBuffer[bytes],
-        storage_options: StorageOptions = None,
+        storage_options: StorageOptions | None = None,
+        engine_kwargs: dict | None = None,
     ) -> None:
         """
         Reader using openpyxl engine.
@@ -537,9 +546,15 @@ class OpenpyxlReader(BaseExcelReader):
         filepath_or_buffer : str, path object or Workbook
             Object to be parsed.
         {storage_options}
+        engine_kwargs : dict, optional
+            Arbitrary keyword arguments passed to excel engine.
         """
         import_optional_dependency("openpyxl")
-        super().__init__(filepath_or_buffer, storage_options=storage_options)
+        super().__init__(
+            filepath_or_buffer,
+            storage_options=storage_options,
+            engine_kwargs=engine_kwargs,
+        )
 
     @property
     def _workbook_class(self):
@@ -547,11 +562,17 @@ class OpenpyxlReader(BaseExcelReader):
 
         return Workbook
 
-    def load_workbook(self, filepath_or_buffer: FilePath | ReadBuffer[bytes]):
+    def load_workbook(
+        self, filepath_or_buffer: FilePath | ReadBuffer[bytes], engine_kwargs
+    ):
         from openpyxl import load_workbook
 
         return load_workbook(
-            filepath_or_buffer, read_only=True, data_only=True, keep_links=False
+            filepath_or_buffer,
+            read_only=True,
+            data_only=True,
+            keep_links=False,
+            **engine_kwargs,
         )
 
     @property
@@ -567,7 +588,6 @@ class OpenpyxlReader(BaseExcelReader):
         return self.book.worksheets[index]
 
     def _convert_cell(self, cell) -> Scalar:
-
         from openpyxl.cell.cell import (
             TYPE_ERROR,
             TYPE_NUMERIC,
@@ -588,7 +608,6 @@ class OpenpyxlReader(BaseExcelReader):
     def get_sheet_data(
         self, sheet, file_rows_needed: int | None = None
     ) -> list[list[Scalar]]:
-
         if self.book.read_only:
             sheet.reset_dimensions()
 

@@ -1,13 +1,16 @@
 """
 Tests for DatetimeArray
 """
+from __future__ import annotations
+
 from datetime import timedelta
 import operator
 
 try:
     from zoneinfo import ZoneInfo
 except ImportError:
-    ZoneInfo = None
+    # Cannot assign to a type
+    ZoneInfo = None  # type: ignore[misc, assignment]
 
 import numpy as np
 import pytest
@@ -16,7 +19,6 @@ from pandas._libs.tslibs import (
     npy_unit_to_abbrev,
     tz_compare,
 )
-from pandas._libs.tslibs.dtypes import NpyDatetimeUnit
 
 from pandas.core.dtypes.dtypes import DatetimeTZDtype
 
@@ -33,15 +35,6 @@ class TestNonNano:
     def unit(self, request):
         """Fixture returning parametrized time units"""
         return request.param
-
-    @pytest.fixture
-    def reso(self, unit):
-        """Fixture returning datetime resolution for a given time unit"""
-        return {
-            "s": NpyDatetimeUnit.NPY_FR_s.value,
-            "ms": NpyDatetimeUnit.NPY_FR_ms.value,
-            "us": NpyDatetimeUnit.NPY_FR_us.value,
-        }[unit]
 
     @pytest.fixture
     def dtype(self, unit, tz_naive_fixture):
@@ -71,19 +64,19 @@ class TestNonNano:
         dta, dti = dta_dti
         return dta
 
-    def test_non_nano(self, unit, reso, dtype):
+    def test_non_nano(self, unit, dtype):
         arr = np.arange(5, dtype=np.int64).view(f"M8[{unit}]")
         dta = DatetimeArray._simple_new(arr, dtype=dtype)
 
         assert dta.dtype == dtype
-        assert dta[0]._creso == reso
+        assert dta[0].unit == unit
         assert tz_compare(dta.tz, dta[0].tz)
         assert (dta[0] == dta[:1]).all()
 
     @pytest.mark.parametrize(
         "field", DatetimeArray._field_ops + DatetimeArray._bool_ops
     )
-    def test_fields(self, unit, reso, field, dtype, dta_dti):
+    def test_fields(self, unit, field, dtype, dta_dti):
         dta, dti = dta_dti
 
         assert (dti == dta).all()
@@ -142,7 +135,7 @@ class TestNonNano:
         expected = dta[0]
 
         assert type(res) is pd.Timestamp
-        assert res.value == expected.value
+        assert res._value == expected._value
         assert res._creso == expected._creso
         assert res == expected
 
@@ -166,7 +159,7 @@ class TestNonNano:
         expected = getattr(dti, meth)
         tm.assert_numpy_array_equal(result, expected)
 
-    def test_format_native_types(self, unit, reso, dtype, dta_dti):
+    def test_format_native_types(self, unit, dtype, dta_dti):
         # In this case we should get the same formatted values with our nano
         #  version dti._data as we do with the non-nano dta
         dta, dti = dta_dti
@@ -387,20 +380,13 @@ class TestDatetimeArray:
     def test_astype_int(self, dtype):
         arr = DatetimeArray._from_sequence([pd.Timestamp("2000"), pd.Timestamp("2001")])
 
-        if np.dtype(dtype).kind == "u":
-            expected_dtype = np.dtype("uint64")
-        else:
-            expected_dtype = np.dtype("int64")
-        expected = arr.astype(expected_dtype)
+        if np.dtype(dtype) != np.int64:
+            with pytest.raises(TypeError, match=r"Do obj.astype\('int64'\)"):
+                arr.astype(dtype)
+            return
 
-        warn = None
-        if dtype != expected_dtype:
-            warn = FutureWarning
-        msg = " will return exactly the specified dtype"
-        with tm.assert_produces_warning(warn, match=msg):
-            result = arr.astype(dtype)
-
-        assert result.dtype == expected_dtype
+        result = arr.astype(dtype)
+        expected = arr._ndarray.view("i8")
         tm.assert_numpy_array_equal(result, expected)
 
     def test_astype_to_sparse_dt64(self):
@@ -496,7 +482,7 @@ class TestDatetimeArray:
 
         arr[-2] = pd.NaT
         result = arr.value_counts(dropna=False)
-        expected = pd.Series([4, 2, 1], index=[dti[0], dti[1], pd.NaT])
+        expected = pd.Series([4, 2, 1], index=[dti[0], dti[1], pd.NaT], name="count")
         tm.assert_series_equal(result, expected)
 
     @pytest.mark.parametrize("method", ["pad", "backfill"])
@@ -511,7 +497,7 @@ class TestDatetimeArray:
             dtype=DatetimeTZDtype(tz="US/Central"),
         )
 
-        result = arr.fillna(method=method)
+        result = arr.pad_or_backfill(method=method)
         tm.assert_extension_array_equal(result, expected)
 
         # assert that arr and dti were not modified in-place
@@ -524,12 +510,12 @@ class TestDatetimeArray:
         dta[0, 1] = pd.NaT
         dta[1, 0] = pd.NaT
 
-        res1 = dta.fillna(method="pad")
+        res1 = dta.pad_or_backfill(method="pad")
         expected1 = dta.copy()
         expected1[1, 0] = dta[0, 0]
         tm.assert_extension_array_equal(res1, expected1)
 
-        res2 = dta.fillna(method="backfill")
+        res2 = dta.pad_or_backfill(method="backfill")
         expected2 = dta.copy()
         expected2 = dta.copy()
         expected2[1, 0] = dta[2, 0]
@@ -543,19 +529,19 @@ class TestDatetimeArray:
         assert not dta2._ndarray.flags["C_CONTIGUOUS"]
         tm.assert_extension_array_equal(dta, dta2)
 
-        res3 = dta2.fillna(method="pad")
+        res3 = dta2.pad_or_backfill(method="pad")
         tm.assert_extension_array_equal(res3, expected1)
 
-        res4 = dta2.fillna(method="backfill")
+        res4 = dta2.pad_or_backfill(method="backfill")
         tm.assert_extension_array_equal(res4, expected2)
 
         # test the DataFrame method while we're here
         df = pd.DataFrame(dta)
-        res = df.fillna(method="pad")
+        res = df.ffill()
         expected = pd.DataFrame(expected1)
         tm.assert_frame_equal(res, expected)
 
-        res = df.fillna(method="backfill")
+        res = df.bfill()
         expected = pd.DataFrame(expected2)
         tm.assert_frame_equal(res, expected)
 
@@ -729,7 +715,9 @@ class TestDatetimeArray:
             # no tzdata
             pass
         else:
-            easts.append(tz)
+            # Argument 1 to "append" of "list" has incompatible type "ZoneInfo";
+            # expected "str"
+            easts.append(tz)  # type: ignore[arg-type]
 
     @pytest.mark.parametrize("tz", easts)
     def test_iter_zoneinfo_fold(self, tz):
@@ -757,3 +745,16 @@ class TestDatetimeArray:
         right2 = dta.astype(object)[2]
         assert str(left) == str(right2)
         assert left.utcoffset() == right2.utcoffset()
+
+
+def test_factorize_sort_without_freq():
+    dta = DatetimeArray._from_sequence([0, 2, 1])
+
+    msg = r"call pd.factorize\(obj, sort=True\) instead"
+    with pytest.raises(NotImplementedError, match=msg):
+        dta.factorize(sort=True)
+
+    # Do TimedeltaArray while we're here
+    tda = dta - dta[0]
+    with pytest.raises(NotImplementedError, match=msg):
+        tda.factorize(sort=True)

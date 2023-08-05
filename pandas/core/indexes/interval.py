@@ -7,8 +7,8 @@ from operator import (
 )
 import textwrap
 from typing import (
+    TYPE_CHECKING,
     Any,
-    Hashable,
     Literal,
 )
 
@@ -26,12 +26,6 @@ from pandas._libs.tslibs import (
     Timestamp,
     to_offset,
 )
-from pandas._typing import (
-    Dtype,
-    DtypeObj,
-    IntervalClosedType,
-    npt,
-)
 from pandas.errors import InvalidIndexError
 from pandas.util._decorators import (
     Appender,
@@ -44,25 +38,24 @@ from pandas.core.dtypes.cast import (
     infer_dtype_from_scalar,
     maybe_box_datetimelike,
     maybe_downcast_numeric,
+    maybe_upcast_numeric_to_64bit,
 )
 from pandas.core.dtypes.common import (
     ensure_platform_int,
-    is_datetime64tz_dtype,
-    is_datetime_or_timedelta_dtype,
-    is_dtype_equal,
     is_float,
     is_float_dtype,
     is_integer,
     is_integer_dtype,
-    is_interval_dtype,
     is_list_like,
     is_number,
     is_object_dtype,
     is_scalar,
-    is_signed_integer_dtype,
-    is_unsigned_integer_dtype,
+    pandas_dtype,
 )
-from pandas.core.dtypes.dtypes import IntervalDtype
+from pandas.core.dtypes.dtypes import (
+    DatetimeTZDtype,
+    IntervalDtype,
+)
 from pandas.core.dtypes.missing import is_valid_na_for_dtype
 
 from pandas.core.algorithms import unique
@@ -93,6 +86,15 @@ from pandas.core.indexes.timedeltas import (
     timedelta_range,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Hashable
+
+    from pandas._typing import (
+        Dtype,
+        DtypeObj,
+        IntervalClosedType,
+        npt,
+    )
 _index_doc_kwargs = dict(ibase._index_doc_kwargs)
 
 _index_doc_kwargs.update(
@@ -111,10 +113,13 @@ _index_doc_kwargs.update(
 
 
 def _get_next_label(label):
+    # see test_slice_locs_with_ints_and_floats_succeeds
     dtype = getattr(label, "dtype", type(label))
     if isinstance(label, (Timestamp, Timedelta)):
-        dtype = "datetime64"
-    if is_datetime_or_timedelta_dtype(dtype) or is_datetime64tz_dtype(dtype):
+        dtype = "datetime64[ns]"
+    dtype = pandas_dtype(dtype)
+
+    if lib.is_np_dtype(dtype, "mM") or isinstance(dtype, DatetimeTZDtype):
         return label + np.timedelta64(1, "ns")
     elif is_integer_dtype(dtype):
         return label + 1
@@ -125,10 +130,13 @@ def _get_next_label(label):
 
 
 def _get_prev_label(label):
+    # see test_slice_locs_with_ints_and_floats_succeeds
     dtype = getattr(label, "dtype", type(label))
     if isinstance(label, (Timestamp, Timedelta)):
-        dtype = "datetime64"
-    if is_datetime_or_timedelta_dtype(dtype) or is_datetime64tz_dtype(dtype):
+        dtype = "datetime64[ns]"
+    dtype = pandas_dtype(dtype)
+
+    if lib.is_np_dtype(dtype, "mM") or isinstance(dtype, DatetimeTZDtype):
         return label - np.timedelta64(1, "ns")
     elif is_integer_dtype(dtype):
         return label - 1
@@ -152,7 +160,6 @@ def _new_IntervalIndex(cls, d):
         "klass": "IntervalIndex",
         "summary": "Immutable index of intervals that are closed on the same side.",
         "name": _index_doc_kwargs["name"],
-        "versionadded": "0.20.0",
         "extra_attributes": "is_overlapping\nvalues\n",
         "extra_methods": "",
         "examples": textwrap.dedent(
@@ -213,13 +220,12 @@ class IntervalIndex(ExtensionIndex):
     def __new__(
         cls,
         data,
-        closed=None,
+        closed: IntervalClosedType | None = None,
         dtype: Dtype | None = None,
         copy: bool = False,
-        name: Hashable = None,
+        name: Hashable | None = None,
         verify_integrity: bool = True,
     ) -> IntervalIndex:
-
         name = maybe_extract_name(name, data, cls)
 
         with rewrite_exception("IntervalArray", cls.__name__):
@@ -258,7 +264,7 @@ class IntervalIndex(ExtensionIndex):
         cls,
         breaks,
         closed: IntervalClosedType | None = "right",
-        name: Hashable = None,
+        name: Hashable | None = None,
         copy: bool = False,
         dtype: Dtype | None = None,
     ) -> IntervalIndex:
@@ -294,7 +300,7 @@ class IntervalIndex(ExtensionIndex):
         left,
         right,
         closed: IntervalClosedType = "right",
-        name: Hashable = None,
+        name: Hashable | None = None,
         copy: bool = False,
         dtype: Dtype | None = None,
     ) -> IntervalIndex:
@@ -329,7 +335,7 @@ class IntervalIndex(ExtensionIndex):
         cls,
         data,
         closed: IntervalClosedType = "right",
-        name: Hashable = None,
+        name: Hashable | None = None,
         copy: bool = False,
         dtype: Dtype | None = None,
     ) -> IntervalIndex:
@@ -342,8 +348,11 @@ class IntervalIndex(ExtensionIndex):
     # "Union[IndexEngine, ExtensionEngine]" in supertype "Index"
     @cache_readonly
     def _engine(self) -> IntervalTree:  # type: ignore[override]
+        # IntervalTree does not supports numpy array unless they are 64 bit
         left = self._maybe_convert_i8(self.left)
+        left = maybe_upcast_numeric_to_64bit(left)
         right = self._maybe_convert_i8(self.right)
+        right = maybe_upcast_numeric_to_64bit(right)
         return IntervalTree(left, right, closed=self.closed)
 
     def __contains__(self, key: Any) -> bool:
@@ -371,6 +380,13 @@ class IntervalIndex(ExtensionIndex):
         except KeyError:
             return False
 
+    def _getitem_slice(self, slobj: slice) -> IntervalIndex:
+        """
+        Fastpath for __getitem__ when we know we have a slice.
+        """
+        res = self._data[slobj]
+        return type(self)._simple_new(res, name=self._name)
+
     @cache_readonly
     def _multiindex(self) -> MultiIndex:
         return MultiIndex.from_arrays([self.left, self.right], names=["left", "right"])
@@ -389,7 +405,8 @@ class IntervalIndex(ExtensionIndex):
         """Return a string of the type inferred from the values"""
         return "interval"
 
-    @Appender(Index.memory_usage.__doc__)
+    # Cannot determine type of "memory_usage"
+    @Appender(Index.memory_usage.__doc__)  # type: ignore[has-type]
     def memory_usage(self, deep: bool = False) -> int:
         # we don't use an explicit engine
         # so return the bytes here
@@ -497,7 +514,8 @@ class IntervalIndex(ExtensionIndex):
         -------
         bool
         """
-        if is_interval_dtype(key) or isinstance(key, Interval):
+        key_dtype = getattr(key, "dtype", None)
+        if isinstance(key_dtype, IntervalDtype) or isinstance(key, Interval):
             return self._needs_i8_conversion(key.left)
 
         i8_types = (Timestamp, Timedelta, DatetimeIndex, TimedeltaIndex)
@@ -518,18 +536,18 @@ class IntervalIndex(ExtensionIndex):
         -------
         scalar or list-like
             The original key if no conversion occurred, int if converted scalar,
-            Int64Index if converted list-like.
+            Index with an int64 dtype if converted list-like.
         """
-        original = key
         if is_list_like(key):
             key = ensure_index(key)
-            key = self._maybe_convert_numeric_to_64bit(key)
+            key = maybe_upcast_numeric_to_64bit(key)
 
         if not self._needs_i8_conversion(key):
-            return original
+            return key
 
         scalar = is_scalar(key)
-        if is_interval_dtype(key) or isinstance(key, Interval):
+        key_dtype = getattr(key, "dtype", None)
+        if isinstance(key_dtype, IntervalDtype) or isinstance(key, Interval):
             # convert left/right and reconstruct
             left = self._maybe_convert_i8(key.left)
             right = self._maybe_convert_i8(key.right)
@@ -541,11 +559,11 @@ class IntervalIndex(ExtensionIndex):
 
         if scalar:
             # Timestamp/Timedelta
-            key_dtype, key_i8 = infer_dtype_from_scalar(key, pandas_dtype=True)
+            key_dtype, key_i8 = infer_dtype_from_scalar(key)
             if lib.is_period(key):
                 key_i8 = key.ordinal
             elif isinstance(key_i8, Timestamp):
-                key_i8 = key_i8.value
+                key_i8 = key_i8._value
             elif isinstance(key_i8, (np.datetime64, np.timedelta64)):
                 key_i8 = key_i8.view("i8")
         else:
@@ -561,27 +579,13 @@ class IntervalIndex(ExtensionIndex):
         # ExtensionDtype]" has no attribute "subtype"
         subtype = self.dtype.subtype  # type: ignore[union-attr]
 
-        if not is_dtype_equal(subtype, key_dtype):
+        if subtype != key_dtype:
             raise ValueError(
                 f"Cannot index an IntervalIndex of subtype {subtype} with "
                 f"values of dtype {key_dtype}"
             )
 
         return key_i8
-
-    def _maybe_convert_numeric_to_64bit(self, idx: Index) -> Index:
-        # IntervalTree only supports 64 bit numpy array
-        dtype = idx.dtype
-        if np.issubclass_(dtype.type, np.number):
-            return idx
-        elif is_signed_integer_dtype(dtype) and dtype != np.int64:
-            return idx.astype(np.int64)
-        elif is_unsigned_integer_dtype(dtype) and dtype != np.uint64:
-            return idx.astype(np.uint64)
-        elif is_float_dtype(dtype) and dtype != np.float64:
-            return idx.astype(np.float64)
-        else:
-            return idx
 
     def _searchsorted_monotonic(self, label, side: Literal["left", "right"] = "left"):
         if not self.is_non_overlapping_monotonic:
@@ -686,7 +690,6 @@ class IntervalIndex(ExtensionIndex):
         limit: int | None = None,
         tolerance: Any | None = None,
     ) -> npt.NDArray[np.intp]:
-
         if isinstance(target, IntervalIndex):
             # We only get here with not self.is_overlapping
             # -> at most one match per interval in target
@@ -789,7 +792,7 @@ class IntervalIndex(ExtensionIndex):
         "cannot handle overlapping indices; use IntervalIndex.get_indexer_non_unique"
     )
 
-    def _convert_slice_indexer(self, key: slice, kind: str):
+    def _convert_slice_indexer(self, key: slice, kind: Literal["loc", "getitem"]):
         if not (key.step is None or key.step == 1):
             # GH#31658 if label-based, we require step == 1,
             #  if positional, we disallow float start/stop
@@ -809,7 +812,7 @@ class IntervalIndex(ExtensionIndex):
         #  positional in this case
         # error: Item "ExtensionDtype"/"dtype[Any]" of "Union[dtype[Any],
         # ExtensionDtype]" has no attribute "subtype"
-        return self.dtype.subtype.kind in ["m", "M"]  # type: ignore[union-attr]
+        return self.dtype.subtype.kind in "mM"  # type: ignore[union-attr]
 
     def _maybe_cast_slice_bound(self, label, side: str):
         return getattr(self, side)._maybe_cast_slice_bound(label, side)
@@ -981,7 +984,7 @@ def interval_range(
     end=None,
     periods=None,
     freq=None,
-    name: Hashable = None,
+    name: Hashable | None = None,
     closed: IntervalClosedType = "right",
 ) -> IntervalIndex:
     """
@@ -995,7 +998,7 @@ def interval_range(
         Right bound for generating intervals.
     periods : int, default None
         Number of periods to generate.
-    freq : numeric, str, datetime.timedelta, or DateOffset, default None
+    freq : numeric, str, Timedelta, datetime.timedelta, or DateOffset, default None
         The length of each interval. Must be consistent with the type of start
         and end, e.g. 2 for numeric, or '5H' for datetime-like.  Default is 1
         for numeric and 'D' for datetime-like.
