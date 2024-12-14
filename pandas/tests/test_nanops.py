@@ -1,5 +1,4 @@
 from functools import partial
-import warnings
 
 import numpy as np
 import pytest
@@ -15,7 +14,6 @@ from pandas import (
 )
 import pandas._testing as tm
 from pandas.core import nanops
-from pandas.core.arrays import DatetimeArray
 
 use_bn = nanops._USE_BOTTLENECK
 
@@ -298,6 +296,7 @@ class TestnanopsDataFrame:
         self,
         testfunc,
         targfunc,
+        testar,
         testarval,
         targarval,
         skipna,
@@ -321,10 +320,17 @@ class TestnanopsDataFrame:
                 else:
                     targ = bool(targ)
 
+            if testfunc.__name__ in ["nanargmax", "nanargmin"] and (
+                testar.startswith("arr_nan")
+                or (testar.endswith("nan") and (not skipna or axis == 1))
+            ):
+                with pytest.raises(ValueError, match="Encountered .* NA value"):
+                    testfunc(testarval, axis=axis, skipna=skipna, **kwargs)
+                return
             res = testfunc(testarval, axis=axis, skipna=skipna, **kwargs)
 
             if (
-                isinstance(targ, np.complex_)
+                isinstance(targ, np.complex128)
                 and isinstance(res, float)
                 and np.isnan(targ)
                 and np.isnan(res)
@@ -352,6 +358,7 @@ class TestnanopsDataFrame:
         self.check_fun_data(
             testfunc,
             targfunc,
+            testar,
             testarval2,
             targarval2,
             skipna=skipna,
@@ -372,6 +379,7 @@ class TestnanopsDataFrame:
         self.check_fun_data(
             testfunc,
             targfunc,
+            testar,
             testarval,
             targarval,
             skipna=skipna,
@@ -465,17 +473,16 @@ class TestnanopsDataFrame:
             nanops.nanmean, np.mean, skipna, allow_obj=False, allow_date=False
         )
 
+    @pytest.mark.filterwarnings("ignore::RuntimeWarning")
     def test_nanmedian(self, skipna):
-        with warnings.catch_warnings(record=True):
-            warnings.simplefilter("ignore", RuntimeWarning)
-            self.check_funs(
-                nanops.nanmedian,
-                np.median,
-                skipna,
-                allow_complex=False,
-                allow_date=False,
-                allow_obj="convert",
-            )
+        self.check_funs(
+            nanops.nanmedian,
+            np.median,
+            skipna,
+            allow_complex=False,
+            allow_date=False,
+            allow_obj="convert",
+        )
 
     @pytest.mark.parametrize("ddof", range(3))
     def test_nanvar(self, ddof, skipna):
@@ -517,13 +524,12 @@ class TestnanopsDataFrame:
                 ddof=ddof,
             )
 
+    @pytest.mark.filterwarnings("ignore::RuntimeWarning")
     @pytest.mark.parametrize(
         "nan_op,np_op", [(nanops.nanmin, np.min), (nanops.nanmax, np.max)]
     )
     def test_nanops_with_warnings(self, nan_op, np_op, skipna):
-        with warnings.catch_warnings(record=True):
-            warnings.simplefilter("ignore", RuntimeWarning)
-            self.check_funs(nan_op, np_op, skipna, allow_obj=False)
+        self.check_funs(nan_op, np_op, skipna, allow_obj=False)
 
     def _argminmax_wrap(self, value, axis=None, func=None):
         res = func(value, axis)
@@ -531,26 +537,21 @@ class TestnanopsDataFrame:
         nullnan = isna(nans)
         if res.ndim:
             res[nullnan] = -1
-        elif (
-            hasattr(nullnan, "all")
-            and nullnan.all()
-            or not hasattr(nullnan, "all")
-            and nullnan
+        elif (hasattr(nullnan, "all") and nullnan.all()) or (
+            not hasattr(nullnan, "all") and nullnan
         ):
             res = -1
         return res
 
+    @pytest.mark.filterwarnings("ignore::RuntimeWarning")
     def test_nanargmax(self, skipna):
-        with warnings.catch_warnings(record=True):
-            warnings.simplefilter("ignore", RuntimeWarning)
-            func = partial(self._argminmax_wrap, func=np.argmax)
-            self.check_funs(nanops.nanargmax, func, skipna, allow_obj=False)
+        func = partial(self._argminmax_wrap, func=np.argmax)
+        self.check_funs(nanops.nanargmax, func, skipna, allow_obj=False)
 
+    @pytest.mark.filterwarnings("ignore::RuntimeWarning")
     def test_nanargmin(self, skipna):
-        with warnings.catch_warnings(record=True):
-            warnings.simplefilter("ignore", RuntimeWarning)
-            func = partial(self._argminmax_wrap, func=np.argmin)
-            self.check_funs(nanops.nanargmin, func, skipna, allow_obj=False)
+        func = partial(self._argminmax_wrap, func=np.argmin)
+        self.check_funs(nanops.nanargmin, func, skipna, allow_obj=False)
 
     def _skew_kurt_wrap(self, values, axis=None, func=None):
         if not isinstance(values.dtype.type, np.floating):
@@ -754,7 +755,6 @@ class TestnanopsDataFrame:
         ("arr_bool", False),
         ("arr_str", False),
         ("arr_utf", False),
-        ("arr_complex", False),
         ("arr_complex_nan", False),
         ("arr_nan_nanj", False),
         ("arr_nan_infj", True),
@@ -1108,23 +1108,19 @@ class TestNankurtFixedValues:
 
 
 class TestDatetime64NaNOps:
-    @pytest.fixture(params=["s", "ms", "us", "ns"])
-    def unit(self, request):
-        return request.param
-
     # Enabling mean changes the behavior of DataFrame.mean
     # See https://github.com/pandas-dev/pandas/issues/24752
     def test_nanmean(self, unit):
         dti = pd.date_range("2016-01-01", periods=3).as_unit(unit)
         expected = dti[1]
 
-        for obj in [dti, DatetimeArray(dti), Series(dti)]:
+        for obj in [dti, dti._data]:
             result = nanops.nanmean(obj)
             assert result == expected
 
         dti2 = dti.insert(1, pd.NaT)
 
-        for obj in [dti2, DatetimeArray(dti2), Series(dti2)]:
+        for obj in [dti2, dti2._data]:
             result = nanops.nanmean(obj)
             assert result == expected
 

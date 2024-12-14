@@ -1,8 +1,11 @@
-from datetime import time
+from datetime import (
+    time,
+    timezone,
+)
+import zoneinfo
 
 import numpy as np
 import pytest
-import pytz
 
 from pandas._libs.tslibs import timezones
 
@@ -18,7 +21,7 @@ class TestAtTime:
     def test_localized_at_time(self, tzstr, frame_or_series):
         tz = timezones.maybe_get_tz(tzstr)
 
-        rng = date_range("4/16/2012", "5/1/2012", freq="H")
+        rng = date_range("4/16/2012", "5/1/2012", freq="h")
         ts = frame_or_series(
             np.random.default_rng(2).standard_normal(len(rng)), index=rng
         )
@@ -65,11 +68,11 @@ class TestAtTime:
         assert len(rs) == 0
 
     @pytest.mark.parametrize(
-        "hour", ["1:00", "1:00AM", time(1), time(1, tzinfo=pytz.UTC)]
+        "hour", ["1:00", "1:00AM", time(1), time(1, tzinfo=timezone.utc)]
     )
     def test_at_time_errors(self, hour):
         # GH#24043
-        dti = date_range("2018", periods=3, freq="H")
+        dti = date_range("2018", periods=3, freq="h")
         df = DataFrame(list(range(len(dti))), index=dti)
         if getattr(hour, "tzinfo", None) is None:
             result = df.at_time(hour)
@@ -81,9 +84,9 @@ class TestAtTime:
 
     def test_at_time_tz(self):
         # GH#24043
-        dti = date_range("2018", periods=3, freq="H", tz="US/Pacific")
+        dti = date_range("2018", periods=3, freq="h", tz="US/Pacific")
         df = DataFrame(list(range(len(dti))), index=dti)
-        result = df.at_time(time(4, tzinfo=pytz.timezone("US/Eastern")))
+        result = df.at_time(time(4, tzinfo=zoneinfo.ZoneInfo("US/Eastern")))
         expected = df.iloc[1:2]
         tm.assert_frame_equal(result, expected)
 
@@ -95,10 +98,9 @@ class TestAtTime:
         with pytest.raises(TypeError, match=msg):  # index is not a DatetimeIndex
             obj.at_time("00:00")
 
-    @pytest.mark.parametrize("axis", ["index", "columns", 0, 1])
     def test_at_time_axis(self, axis):
         # issue 8839
-        rng = date_range("1/1/2000", "1/5/2000", freq="5min")
+        rng = date_range("1/1/2000", "1/2/2000", freq="5min")
         ts = DataFrame(np.random.default_rng(2).standard_normal((len(rng), len(rng))))
         ts.index, ts.columns = rng, rng
 

@@ -1,5 +1,4 @@
 import re
-from warnings import catch_warnings
 
 import numpy as np
 import pytest
@@ -20,8 +19,9 @@ class TestABCClasses:
     categorical_df = pd.DataFrame({"values": [1, 2, 3]}, index=categorical)
     df = pd.DataFrame({"names": ["a", "b", "c"]}, index=multi_index)
     sparse_array = pd.arrays.SparseArray(np.random.default_rng(2).standard_normal(10))
-    datetime_array = pd.core.arrays.DatetimeArray(datetime_index)
-    timedelta_array = pd.core.arrays.TimedeltaArray(timedelta_index)
+
+    datetime_array = datetime_index.array
+    timedelta_array = timedelta_index.array
 
     abc_pairs = [
         ("ABCMultiIndex", multi_index),
@@ -107,27 +107,24 @@ def test_setattr_warnings():
     }
     df = pd.DataFrame(d)
 
-    with catch_warnings(record=True) as w:
+    with tm.assert_produces_warning(None):
         #  successfully add new column
         #  this should not raise a warning
         df["three"] = df.two + 1
-        assert len(w) == 0
         assert df.three.sum() > df.two.sum()
 
-    with catch_warnings(record=True) as w:
+    with tm.assert_produces_warning(None):
         #  successfully modify column in place
         #  this should not raise a warning
         df.one += 1
-        assert len(w) == 0
         assert df.one.iloc[0] == 2
 
-    with catch_warnings(record=True) as w:
+    with tm.assert_produces_warning(None):
         #  successfully add an attribute to a series
         #  this should not raise a warning
         df.two.not_an_index = [1, 2]
-        assert len(w) == 0
 
-    with tm.assert_produces_warning(UserWarning):
+    with tm.assert_produces_warning(UserWarning, match="doesn't allow columns"):
         #  warn when setting column to nonexistent name
         df.four = df.two + 2
         assert df.four.sum() > df.two.sum()

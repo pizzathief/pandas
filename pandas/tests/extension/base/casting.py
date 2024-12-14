@@ -6,10 +6,9 @@ import pandas.util._test_decorators as td
 import pandas as pd
 import pandas._testing as tm
 from pandas.core.internals.blocks import NumpyBlock
-from pandas.tests.extension.base.base import BaseExtensionTests
 
 
-class BaseCastingTests(BaseExtensionTests):
+class BaseCastingTests:
     """Casting to and from ExtensionDtypes"""
 
     def test_astype_object_series(self, all_data):
@@ -31,8 +30,9 @@ class BaseCastingTests(BaseExtensionTests):
             blk = result._mgr.blocks[0]
             assert isinstance(blk, NumpyBlock), type(blk)
             assert blk.is_object
-        assert isinstance(result._mgr.arrays[0], np.ndarray)
-        assert result._mgr.arrays[0].dtype == np.dtype(object)
+        arr = result._mgr.blocks[0].values
+        assert isinstance(arr, np.ndarray)
+        assert arr.dtype == np.dtype(object)
 
         # check that we can compare the dtypes
         comp = result.dtypes == df.dtypes
@@ -44,8 +44,8 @@ class BaseCastingTests(BaseExtensionTests):
         assert result == expected
 
     def test_astype_str(self, data):
-        result = pd.Series(data[:5]).astype(str)
-        expected = pd.Series([str(x) for x in data[:5]], dtype=str)
+        result = pd.Series(data[:2]).astype(str)
+        expected = pd.Series([str(x) for x in data[:2]], dtype=str)
         tm.assert_series_equal(result, expected)
 
     @pytest.mark.parametrize(

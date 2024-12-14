@@ -5,10 +5,9 @@ import pandas as pd
 import pandas._testing as tm
 from pandas.api.extensions import ExtensionArray
 from pandas.core.internals.blocks import EABackedBlock
-from pandas.tests.extension.base.base import BaseExtensionTests
 
 
-class BaseConstructorsTests(BaseExtensionTests):
+class BaseConstructorsTests:
     def test_from_sequence_from_cls(self, data):
         result = type(data)._from_sequence(data, dtype=data.dtype)
         tm.assert_extension_array_equal(result, data)
@@ -19,7 +18,7 @@ class BaseConstructorsTests(BaseExtensionTests):
 
     def test_array_from_scalars(self, data):
         scalars = [data[0], data[1], data[2]]
-        result = data._from_sequence(scalars)
+        result = data._from_sequence(scalars, dtype=data.dtype)
         assert isinstance(result, type(data))
 
     def test_series_constructor(self, data):
@@ -70,7 +69,7 @@ class BaseConstructorsTests(BaseExtensionTests):
         assert result.shape == (len(data), 1)
         if hasattr(result._mgr, "blocks"):
             assert isinstance(result._mgr.blocks[0], EABackedBlock)
-        assert isinstance(result._mgr.arrays[0], ExtensionArray)
+        assert isinstance(result._mgr.blocks[0].values, ExtensionArray)
 
     def test_dataframe_from_series(self, data):
         result = pd.DataFrame(pd.Series(data))
@@ -78,7 +77,7 @@ class BaseConstructorsTests(BaseExtensionTests):
         assert result.shape == (len(data), 1)
         if hasattr(result._mgr, "blocks"):
             assert isinstance(result._mgr.blocks[0], EABackedBlock)
-        assert isinstance(result._mgr.arrays[0], ExtensionArray)
+        assert isinstance(result._mgr.blocks[0].values, ExtensionArray)
 
     def test_series_given_mismatched_index_raises(self, data):
         msg = r"Length of values \(3\) does not match length of index \(5\)"

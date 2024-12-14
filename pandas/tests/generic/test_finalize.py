@@ -1,6 +1,7 @@
 """
 An exhaustive list of pandas methods exercising NDFrame.__finalize__.
 """
+
 import operator
 import re
 
@@ -8,7 +9,6 @@ import numpy as np
 import pytest
 
 import pandas as pd
-import pandas._testing as tm
 
 # TODO:
 # * Binary methods (mul, div, etc.)
@@ -31,11 +31,6 @@ frame_mi_data = ({"A": [1, 2, 3, 4]}, mi)
 # - Callable: pass the constructed value with attrs set to this.
 
 _all_methods = [
-    (
-        pd.Series,
-        (np.array([0], dtype="float64")),
-        operator.methodcaller("view", "int64"),
-    ),
     (pd.Series, ([0],), operator.methodcaller("take", [])),
     (pd.Series, ([0],), operator.methodcaller("__getitem__", [True])),
     (pd.Series, ([0],), operator.methodcaller("repeat", 2)),
@@ -95,7 +90,6 @@ _all_methods = [
     (pd.DataFrame, frame_data, operator.methodcaller("rename", columns={"A": "a"})),
     (pd.DataFrame, frame_data, operator.methodcaller("rename", index=lambda x: x)),
     (pd.DataFrame, frame_data, operator.methodcaller("fillna", "A")),
-    (pd.DataFrame, frame_data, operator.methodcaller("fillna", method="ffill")),
     (pd.DataFrame, frame_data, operator.methodcaller("set_index", "A")),
     (pd.DataFrame, frame_data, operator.methodcaller("reset_index")),
     (pd.DataFrame, frame_data, operator.methodcaller("isna")),
@@ -281,12 +275,12 @@ _all_methods = [
     (
         pd.Series,
         (1, pd.date_range("2000", periods=4)),
-        operator.methodcaller("asfreq", "H"),
+        operator.methodcaller("asfreq", "h"),
     ),
     (
         pd.DataFrame,
         ({"A": [1, 1, 1, 1]}, pd.date_range("2000", periods=4)),
-        operator.methodcaller("asfreq", "H"),
+        operator.methodcaller("asfreq", "h"),
     ),
     (
         pd.Series,
@@ -307,16 +301,6 @@ _all_methods = [
         pd.DataFrame,
         ({"A": [1, 1, 1, 1]}, pd.date_range("2000", periods=4)),
         operator.methodcaller("between_time", "12:00", "13:00"),
-    ),
-    (
-        pd.Series,
-        (1, pd.date_range("2000", periods=4)),
-        operator.methodcaller("last", "3D"),
-    ),
-    (
-        pd.DataFrame,
-        ({"A": [1, 1, 1, 1]}, pd.date_range("2000", periods=4)),
-        operator.methodcaller("last", "3D"),
     ),
     (pd.Series, ([1, 2],), operator.methodcaller("rank")),
     (pd.DataFrame, frame_data, operator.methodcaller("rank")),
@@ -391,18 +375,7 @@ def idfn(x):
         return str(x)
 
 
-@pytest.fixture(params=_all_methods, ids=lambda x: idfn(x[-1]))
-def ndframe_method(request):
-    """
-    An NDFrame method returning an NDFrame.
-    """
-    return request.param
-
-
-@pytest.mark.filterwarnings(
-    "ignore:DataFrame.fillna with 'method' is deprecated:FutureWarning",
-    "ignore:last is deprecated:FutureWarning",
-)
+@pytest.mark.parametrize("ndframe_method", _all_methods, ids=lambda x: idfn(x[-1]))
 def test_finalize_called(ndframe_method):
     cls, init_args, method = ndframe_method
     ndframe = cls(*init_args)
@@ -411,39 +384,6 @@ def test_finalize_called(ndframe_method):
     result = method(ndframe)
 
     assert result.attrs == {"a": 1}
-
-
-@pytest.mark.parametrize(
-    "data",
-    [
-        pd.Series(1, pd.date_range("2000", periods=4)),
-        pd.DataFrame({"A": [1, 1, 1, 1]}, pd.date_range("2000", periods=4)),
-    ],
-)
-def test_finalize_first(data):
-    deprecated_msg = "first is deprecated"
-
-    data.attrs = {"a": 1}
-    with tm.assert_produces_warning(FutureWarning, match=deprecated_msg):
-        result = data.first("3D")
-        assert result.attrs == {"a": 1}
-
-
-@pytest.mark.parametrize(
-    "data",
-    [
-        pd.Series(1, pd.date_range("2000", periods=4)),
-        pd.DataFrame({"A": [1, 1, 1, 1]}, pd.date_range("2000", periods=4)),
-    ],
-)
-def test_finalize_last(data):
-    # GH 53710
-    deprecated_msg = "last is deprecated"
-
-    data.attrs = {"a": 1}
-    with tm.assert_produces_warning(FutureWarning, match=deprecated_msg):
-        result = data.last("3D")
-        assert result.attrs == {"a": 1}
 
 
 @not_implemented_mark
@@ -490,7 +430,7 @@ def test_binops(request, args, annotate, all_binary_operators):
     if not (isinstance(left, int) or isinstance(right, int)) and annotate != "both":
         if not all_binary_operators.__name__.startswith("r"):
             if annotate == "right" and isinstance(left, type(right)):
-                request.node.add_marker(
+                request.applymarker(
                     pytest.mark.xfail(
                         reason=f"{all_binary_operators} doesn't work when right has "
                         f"attrs and both are {type(left)}"
@@ -498,14 +438,14 @@ def test_binops(request, args, annotate, all_binary_operators):
                 )
             if not isinstance(left, type(right)):
                 if annotate == "left" and isinstance(left, pd.Series):
-                    request.node.add_marker(
+                    request.applymarker(
                         pytest.mark.xfail(
                             reason=f"{all_binary_operators} doesn't work when the "
                             "objects are different Series has attrs"
                         )
                     )
                 elif annotate == "right" and isinstance(right, pd.Series):
-                    request.node.add_marker(
+                    request.applymarker(
                         pytest.mark.xfail(
                             reason=f"{all_binary_operators} doesn't work when the "
                             "objects are different Series has attrs"
@@ -513,7 +453,7 @@ def test_binops(request, args, annotate, all_binary_operators):
                     )
         else:
             if annotate == "left" and isinstance(left, type(right)):
-                request.node.add_marker(
+                request.applymarker(
                     pytest.mark.xfail(
                         reason=f"{all_binary_operators} doesn't work when left has "
                         f"attrs and both are {type(left)}"
@@ -521,14 +461,14 @@ def test_binops(request, args, annotate, all_binary_operators):
                 )
             if not isinstance(left, type(right)):
                 if annotate == "right" and isinstance(right, pd.Series):
-                    request.node.add_marker(
+                    request.applymarker(
                         pytest.mark.xfail(
                             reason=f"{all_binary_operators} doesn't work when the "
                             "objects are different Series has attrs"
                         )
                     )
                 elif annotate == "left" and isinstance(left, pd.Series):
-                    request.node.add_marker(
+                    request.applymarker(
                         pytest.mark.xfail(
                             reason=f"{all_binary_operators} doesn't work when the "
                             "objects are different Series has attrs"
@@ -549,9 +489,9 @@ def test_binops(request, args, annotate, all_binary_operators):
     ]
     if is_cmp and isinstance(left, pd.DataFrame) and isinstance(right, pd.Series):
         # in 2.0 silent alignment on comparisons was removed xref GH#28759
-        left, right = left.align(right, axis=1, copy=False)
+        left, right = left.align(right, axis=1)
     elif is_cmp and isinstance(left, pd.Series) and isinstance(right, pd.DataFrame):
-        right, left = right.align(left, axis=1, copy=False)
+        right, left = right.align(left, axis=1)
 
     result = all_binary_operators(left, right)
     assert result.attrs == {"a": 1}
@@ -628,9 +568,9 @@ def test_string_method(method):
         operator.methodcaller("tz_localize", "CET"),
         operator.methodcaller("normalize"),
         operator.methodcaller("strftime", "%Y"),
-        operator.methodcaller("round", "H"),
-        operator.methodcaller("floor", "H"),
-        operator.methodcaller("ceil", "H"),
+        operator.methodcaller("round", "h"),
+        operator.methodcaller("floor", "h"),
+        operator.methodcaller("ceil", "h"),
         operator.methodcaller("month_name"),
         operator.methodcaller("day_name"),
     ],

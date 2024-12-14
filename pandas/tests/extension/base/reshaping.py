@@ -7,10 +7,9 @@ import pandas as pd
 import pandas._testing as tm
 from pandas.api.extensions import ExtensionArray
 from pandas.core.internals.blocks import EABackedBlock
-from pandas.tests.extension.base.base import BaseExtensionTests
 
 
-class BaseReshapingTests(BaseExtensionTests):
+class BaseReshapingTests:
     """Tests for reshaping and concatenation."""
 
     @pytest.mark.parametrize("in_frame", [True, False])
@@ -30,12 +29,12 @@ class BaseReshapingTests(BaseExtensionTests):
         assert dtype == data.dtype
         if hasattr(result._mgr, "blocks"):
             assert isinstance(result._mgr.blocks[0], EABackedBlock)
-        assert isinstance(result._mgr.arrays[0], ExtensionArray)
+        assert isinstance(result._mgr.blocks[0].values, ExtensionArray)
 
     @pytest.mark.parametrize("in_frame", [True, False])
     def test_concat_all_na_block(self, data_missing, in_frame):
-        valid_block = pd.Series(data_missing.take([1, 1]), index=[0, 1])
-        na_block = pd.Series(data_missing.take([0, 0]), index=[2, 3])
+        valid_block = pd.Series(data_missing.take([1, 1]), index=range(2))
+        na_block = pd.Series(data_missing.take([0, 0]), index=range(2, 4))
         if in_frame:
             valid_block = pd.DataFrame({"a": valid_block})
             na_block = pd.DataFrame({"a": na_block})
@@ -107,7 +106,7 @@ class BaseReshapingTests(BaseExtensionTests):
                 "B": data[3:7],
             }
         )
-        result = pd.concat([df1, df2], axis=1, copy=False)
+        result = pd.concat([df1, df2], axis=1)
         tm.assert_frame_equal(result, expected)
 
     def test_concat_with_reindex(self, data):
@@ -237,13 +236,16 @@ class BaseReshapingTests(BaseExtensionTests):
         result = pd.merge(df1, df2, on="key")
         expected = pd.DataFrame(
             {
-                "key": key.take([0, 0, 0, 0, 1]),
-                "val_x": [1, 1, 3, 3, 2],
-                "val_y": [1, 3, 1, 3, 2],
+                "key": key.take([0, 0, 1, 2, 2]),
+                "val_x": [1, 1, 2, 3, 3],
+                "val_y": [1, 3, 2, 1, 3],
             }
         )
         tm.assert_frame_equal(result, expected)
 
+    @pytest.mark.filterwarnings(
+        "ignore:The previous implementation of stack is deprecated"
+    )
     @pytest.mark.parametrize(
         "columns",
         [
@@ -334,6 +336,9 @@ class BaseReshapingTests(BaseExtensionTests):
         result = data.ravel()
         assert type(result) == type(data)
 
+        if data.dtype._is_immutable:
+            pytest.skip(f"test_ravel assumes mutability and {data.dtype} is immutable")
+
         # Check that we have a view, not a copy
         result[0] = result[1]
         assert data[0] == data[1]
@@ -347,6 +352,11 @@ class BaseReshapingTests(BaseExtensionTests):
 
         # If we ever _did_ support 2D, shape should be reversed
         assert result.shape == data.shape[::-1]
+
+        if data.dtype._is_immutable:
+            pytest.skip(
+                f"test_transpose assumes mutability and {data.dtype} is immutable"
+            )
 
         # Check that we have a view, not a copy
         result[0] = result[1]

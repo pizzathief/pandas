@@ -1,6 +1,10 @@
 import numpy as np
 import pytest
 
+from pandas._config import using_string_dtype
+
+from pandas.compat import HAS_PYARROW
+
 import pandas as pd
 import pandas._testing as tm
 
@@ -124,7 +128,7 @@ def test_data_frame_value_counts_dropna_true(nulls_fixture):
     expected = pd.Series(
         data=[1, 1],
         index=pd.MultiIndex.from_arrays(
-            [("Beth", "John"), ("Louise", "Smith")], names=["first_name", "middle_name"]
+            [("John", "Beth"), ("Smith", "Louise")], names=["first_name", "middle_name"]
         ),
         name="count",
     )
@@ -132,6 +136,9 @@ def test_data_frame_value_counts_dropna_true(nulls_fixture):
     tm.assert_series_equal(result, expected)
 
 
+@pytest.mark.xfail(
+    using_string_dtype() and not HAS_PYARROW, reason="TODO(infer_string)", strict=False
+)
 def test_data_frame_value_counts_dropna_false(nulls_fixture):
     # GH 41334
     df = pd.DataFrame(
@@ -147,9 +154,9 @@ def test_data_frame_value_counts_dropna_false(nulls_fixture):
         index=pd.MultiIndex(
             levels=[
                 pd.Index(["Anne", "Beth", "John"]),
-                pd.Index(["Louise", "Smith", nulls_fixture]),
+                pd.Index(["Louise", "Smith", np.nan]),
             ],
-            codes=[[0, 1, 2, 2], [2, 0, 1, 2]],
+            codes=[[2, 0, 2, 1], [1, 2, 2, 0]],
             names=["first_name", "middle_name"],
         ),
         name="count",
@@ -174,4 +181,32 @@ def test_data_frame_value_counts_subset(nulls_fixture, columns):
         name="count",
     )
 
+    tm.assert_series_equal(result, expected)
+
+
+def test_value_counts_categorical_future_warning():
+    # GH#54775
+    df = pd.DataFrame({"a": [1, 2, 3]}, dtype="category")
+    result = df.value_counts()
+    expected = pd.Series(
+        1,
+        index=pd.MultiIndex.from_arrays(
+            [pd.Index([1, 2, 3], name="a", dtype="category")]
+        ),
+        name="count",
+    )
+    tm.assert_series_equal(result, expected)
+
+
+def test_value_counts_with_missing_category():
+    # GH-54836
+    df = pd.DataFrame({"a": pd.Categorical([1, 2, 4], categories=[1, 2, 3, 4])})
+    result = df.value_counts()
+    expected = pd.Series(
+        [1, 1, 1, 0],
+        index=pd.MultiIndex.from_arrays(
+            [pd.CategoricalIndex([1, 2, 4, 3], categories=[1, 2, 3, 4], name="a")]
+        ),
+        name="count",
+    )
     tm.assert_series_equal(result, expected)

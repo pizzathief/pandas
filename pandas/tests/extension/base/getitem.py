@@ -3,10 +3,9 @@ import pytest
 
 import pandas as pd
 import pandas._testing as tm
-from pandas.tests.extension.base.base import BaseExtensionTests
 
 
-class BaseGetitemTests(BaseExtensionTests):
+class BaseGetitemTests:
     """Tests for ExtensionArray.__getitem__."""
 
     def test_iloc_series(self, data):
@@ -330,11 +329,10 @@ class BaseGetitemTests(BaseExtensionTests):
         result = s.get("Z")
         assert result is None
 
-        msg = "Series.__getitem__ treating keys as positions is deprecated"
-        with tm.assert_produces_warning(FutureWarning, match=msg):
-            assert s.get(4) == s.iloc[4]
-            assert s.get(-1) == s.iloc[-1]
-            assert s.get(len(s)) is None
+        # As of 3.0, getitem with int keys treats them as labels
+        assert s.get(4) is None
+        assert s.get(-1) is None
+        assert s.get(len(s)) is None
 
         # GH 21257
         s = pd.Series(data)
@@ -395,7 +393,7 @@ class BaseGetitemTests(BaseExtensionTests):
         tm.assert_extension_array_equal(result, expected)
 
     def test_take_pandas_style_negative_raises(self, data, na_value):
-        with pytest.raises(ValueError, match=""):
+        with tm.external_error_raised(ValueError):
             data.take([0, -2], fill_value=na_value, allow_fill=True)
 
     @pytest.mark.parametrize("allow_fill", [True, False])
@@ -410,7 +408,7 @@ class BaseGetitemTests(BaseExtensionTests):
         result = s.take([0, -1])
         expected = pd.Series(
             data._from_sequence([data[0], data[len(data) - 1]], dtype=s.dtype),
-            index=[0, len(data) - 1],
+            index=range(0, 198, 99),
         )
         tm.assert_series_equal(result, expected)
 
@@ -430,7 +428,8 @@ class BaseGetitemTests(BaseExtensionTests):
 
         result = s.reindex([n, n + 1])
         expected = pd.Series(
-            data._from_sequence([na_value, na_value], dtype=s.dtype), index=[n, n + 1]
+            data._from_sequence([na_value, na_value], dtype=s.dtype),
+            index=range(n, n + 2, 1),
         )
         tm.assert_series_equal(result, expected)
 
@@ -452,7 +451,7 @@ class BaseGetitemTests(BaseExtensionTests):
         df = pd.DataFrame({"A": data})
         res = df.loc[[0], "A"]
         assert res.ndim == 1
-        assert res._mgr.arrays[0].ndim == 1
+        assert res._mgr.blocks[0].ndim == 1
         if hasattr(res._mgr, "blocks"):
             assert res._mgr._block.ndim == 1
 
@@ -468,23 +467,3 @@ class BaseGetitemTests(BaseExtensionTests):
 
         with pytest.raises(ValueError, match=msg):
             s.item()
-
-    def test_ellipsis_index(self):
-        # GH42430 1D slices over extension types turn into N-dimensional slices over
-        #  ExtensionArrays
-        class CapturingStringArray(pd.arrays.StringArray):
-            """Extend StringArray to capture arguments to __getitem__"""
-
-            def __getitem__(self, item):
-                self.last_item_arg = item
-                return super().__getitem__(item)
-
-        df = pd.DataFrame(
-            {"col1": CapturingStringArray(np.array(["hello", "world"], dtype=object))}
-        )
-        _ = df.iloc[:1]
-
-        # String comparison because there's no native way to compare slices.
-        # Before the fix for GH42430, last_item_arg would get set to the 2D slice
-        # (Ellipsis, slice(None, 1, None))
-        tm.assert_equal(str(df["col1"].array.last_item_arg), "slice(None, 1, None)")

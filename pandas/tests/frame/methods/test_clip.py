@@ -94,9 +94,13 @@ class TestDataFrameClip:
             (1, [[2.0, 3.0, 4.0], [4.0, 5.0, 6.0], [5.0, 6.0, 7.0]]),
         ],
     )
-    def test_clip_against_list_like(self, simple_frame, inplace, lower, axis, res):
+    def test_clip_against_list_like(self, inplace, lower, axis, res):
         # GH#15390
-        original = simple_frame.copy(deep=True)
+        arr = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]])
+
+        original = DataFrame(
+            arr, columns=["one", "two", "three"], index=["a", "b", "c"]
+        )
 
         result = original.clip(lower=lower, upper=[5, 6, 7], axis=axis, inplace=inplace)
 
@@ -153,7 +157,11 @@ class TestDataFrameClip:
 
         result = df.clip(lower=[4, 5, np.nan], axis=0)
         expected = DataFrame(
-            {"col_0": [4, 5, 3], "col_1": [4, 5, 6], "col_2": [7, 8, 9]}
+            {
+                "col_0": Series([4, 5, 3], dtype="float"),
+                "col_1": [4, 5, 6],
+                "col_2": [7, 8, 9],
+            }
         )
         tm.assert_frame_equal(result, expected)
 
@@ -166,9 +174,11 @@ class TestDataFrameClip:
         # GH#40420
         data = {"col_0": [9, -3, 0, -1, 5], "col_1": [-2, -7, 6, 8, -5]}
         df = DataFrame(data)
-        t = Series([2, -4, np.NaN, 6, 3])
+        t = Series([2, -4, np.nan, 6, 3])
         result = df.clip(lower=t, axis=0)
-        expected = DataFrame({"col_0": [9, -3, 0, 6, 5], "col_1": [2, -4, 6, 8, 3]})
+        expected = DataFrame(
+            {"col_0": [9, -3, 0, 6, 5], "col_1": [2, -4, 6, 8, 3]}, dtype="float"
+        )
         tm.assert_frame_equal(result, expected)
 
     def test_clip_int_data_with_float_bound(self):
@@ -176,4 +186,15 @@ class TestDataFrameClip:
         df = DataFrame({"a": [1, 2, 3]})
         result = df.clip(lower=1.5)
         expected = DataFrame({"a": [1.5, 2.0, 3.0]})
+        tm.assert_frame_equal(result, expected)
+
+    def test_clip_with_list_bound(self):
+        # GH#54817
+        df = DataFrame([1, 5])
+        expected = DataFrame([3, 5])
+        result = df.clip([3])
+        tm.assert_frame_equal(result, expected)
+
+        expected = DataFrame([1, 3])
+        result = df.clip(upper=[3])
         tm.assert_frame_equal(result, expected)

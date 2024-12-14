@@ -1,5 +1,3 @@
-import warnings
-
 import numpy as np
 import pytest
 
@@ -64,9 +62,13 @@ def test_rolling_corr(series):
     result = A.rolling(window=50, min_periods=25).corr(B)
     tm.assert_almost_equal(result.iloc[-1], np.corrcoef(A[-50:], B[-50:])[0, 1])
 
+
+def test_rolling_corr_bias_correction():
     # test for correct bias correction
-    a = tm.makeTimeSeries()
-    b = tm.makeTimeSeries()
+    a = Series(
+        np.arange(20, dtype=np.float64), index=date_range("2020-01-01", periods=20)
+    )
+    b = a.copy()
     a[:5] = np.nan
     b[:10] = np.nan
 
@@ -94,14 +96,14 @@ def test_flex_binary_frame(method, frame):
     tm.assert_frame_equal(res, exp)
     tm.assert_frame_equal(res2, exp)
 
-    frame2 = frame.copy()
     frame2 = DataFrame(
-        np.random.default_rng(2).standard_normal(frame2.shape),
-        index=frame2.index,
-        columns=frame2.columns,
+        np.random.default_rng(2).standard_normal(frame.shape),
+        index=frame.index,
+        columns=frame.columns,
     )
 
     res3 = getattr(frame.rolling(window=10), method)(frame2)
+    res3.columns = Index(list(res3.columns))
     exp = DataFrame(
         {k: getattr(frame[k].rolling(window=10), method)(frame2[k]) for k in frame}
     )
@@ -142,26 +144,26 @@ def test_corr_sanity():
 
 def test_rolling_cov_diff_length():
     # GH 7512
-    s1 = Series([1, 2, 3], index=[0, 1, 2])
-    s2 = Series([1, 3], index=[0, 2])
+    s1 = Series([1, 2, 3], index=range(3))
+    s2 = Series([1, 3], index=range(0, 4, 2))
     result = s1.rolling(window=3, min_periods=2).cov(s2)
     expected = Series([None, None, 2.0])
     tm.assert_series_equal(result, expected)
 
-    s2a = Series([1, None, 3], index=[0, 1, 2])
+    s2a = Series([1, None, 3], index=range(3))
     result = s1.rolling(window=3, min_periods=2).cov(s2a)
     tm.assert_series_equal(result, expected)
 
 
 def test_rolling_corr_diff_length():
     # GH 7512
-    s1 = Series([1, 2, 3], index=[0, 1, 2])
-    s2 = Series([1, 3], index=[0, 2])
+    s1 = Series([1, 2, 3], index=range(3))
+    s2 = Series([1, 3], index=range(0, 4, 2))
     result = s1.rolling(window=3, min_periods=2).corr(s2)
     expected = Series([None, None, 1.0])
     tm.assert_series_equal(result, expected)
 
-    s2a = Series([1, None, 3], index=[0, 1, 2])
+    s2a = Series([1, None, 3], index=range(3))
     result = s1.rolling(window=3, min_periods=2).corr(s2a)
     tm.assert_series_equal(result, expected)
 
@@ -325,6 +327,7 @@ class TestPairwise:
 
         tm.assert_numpy_array_equal(result, expected, check_dtype=False)
 
+    @pytest.mark.filterwarnings("ignore:RuntimeWarning")
     @pytest.mark.parametrize(
         "f",
         [
@@ -344,13 +347,11 @@ class TestPairwise:
             else None
         )
         if result is not None:
-            with warnings.catch_warnings(record=True):
-                warnings.simplefilter("ignore", RuntimeWarning)
-                # we can have int and str columns
-                expected_index = pairwise_frames.index.union(pairwise_other_frame.index)
-                expected_columns = pairwise_frames.columns.union(
-                    pairwise_other_frame.columns
-                )
+            # we can have int and str columns
+            expected_index = pairwise_frames.index.union(pairwise_other_frame.index)
+            expected_columns = pairwise_frames.columns.union(
+                pairwise_other_frame.columns
+            )
             tm.assert_index_equal(result.index, expected_index)
             tm.assert_index_equal(result.columns, expected_columns)
         else:
@@ -395,7 +396,7 @@ class TestPairwise:
     def test_corr_freq_memory_error(self):
         # GH 31789
         s = Series(range(5), index=date_range("2020", periods=5))
-        result = s.rolling("12H").corr(s)
+        result = s.rolling("12h").corr(s)
         expected = Series([np.nan] * 5, index=date_range("2020", periods=5))
         tm.assert_series_equal(result, expected)
 
@@ -413,7 +414,7 @@ class TestPairwise:
         expected = DataFrame(
             np.vstack(
                 (
-                    np.full((8, 8), np.NaN),
+                    np.full((8, 8), np.nan),
                     np.full((8, 8), 32.000000),
                     np.full((8, 8), 63.881919),
                 )

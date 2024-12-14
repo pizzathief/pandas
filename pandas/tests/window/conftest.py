@@ -51,28 +51,6 @@ def min_periods(request):
 
 
 @pytest.fixture(params=[True, False])
-def parallel(request):
-    """parallel keyword argument for numba.jit"""
-    return request.param
-
-
-# Can parameterize nogil & nopython over True | False, but limiting per
-# https://github.com/pandas-dev/pandas/pull/41971#issuecomment-860607472
-
-
-@pytest.fixture(params=[False])
-def nogil(request):
-    """nogil keyword argument for numba.jit"""
-    return request.param
-
-
-@pytest.fixture(params=[True])
-def nopython(request):
-    """nopython keyword argument for numba.jit"""
-    return request.param
-
-
-@pytest.fixture(params=[True, False])
 def adjust(request):
     """adjust keyword argument for ewm"""
     return request.param
@@ -126,7 +104,7 @@ def series():
     """Make mocked series as fixture."""
     arr = np.random.default_rng(2).standard_normal(100)
     locs = np.arange(20, 40)
-    arr[locs] = np.NaN
+    arr[locs] = np.nan
     series = Series(arr, index=bdate_range(datetime(2009, 1, 1), periods=100))
     return series
 

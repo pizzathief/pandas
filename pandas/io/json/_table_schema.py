@@ -3,6 +3,7 @@ Table Schema builders
 
 https://specs.frictionlessdata.io/table-schema/
 """
+
 from __future__ import annotations
 
 from typing import (
@@ -33,6 +34,8 @@ from pandas.core.dtypes.dtypes import (
 
 from pandas import DataFrame
 import pandas.core.common as com
+
+from pandas.tseries.frequencies import to_offset
 
 if TYPE_CHECKING:
     from pandas._typing import (
@@ -111,7 +114,7 @@ def set_default_names(data):
             )
         return data
 
-    data = data.copy()
+    data = data.copy(deep=False)
     if data.index.nlevels > 1:
         data.index.names = com.fill_missing_names(data.index.names)
     else:
@@ -141,11 +144,11 @@ def convert_pandas_type_to_json_field(arr) -> dict[str, JSONSerializable]:
         field["freq"] = dtype.freq.freqstr
     elif isinstance(dtype, DatetimeTZDtype):
         if timezones.is_utc(dtype.tz):
-            # timezone.utc has no "zone" attr
             field["tz"] = "UTC"
         else:
-            # error: "tzinfo" has no attribute "zone"
-            field["tz"] = dtype.tz.zone  # type: ignore[attr-defined]
+            zone = timezones.get_timezone(dtype.tz)
+            if isinstance(zone, str):
+                field["tz"] = zone
     elif isinstance(dtype, ExtensionDtype):
         field["extDtype"] = dtype.name
     return field
@@ -207,8 +210,11 @@ def convert_json_field_to_pandas_type(field) -> str | CategoricalDtype:
         if field.get("tz"):
             return f"datetime64[ns, {field['tz']}]"
         elif field.get("freq"):
+            # GH#9586 rename frequency M to ME for offsets
+            offset = to_offset(field["freq"])
+            freq = PeriodDtype(offset)._freqstr
             # GH#47747 using datetime over period to minimize the change surface
-            return f"period[{field['freq']}]"
+            return f"period[{freq}]"
         else:
             return "datetime64[ns]"
     elif typ == "any":
@@ -269,8 +275,8 @@ def build_table_schema(
     >>> df = pd.DataFrame(
     ...     {'A': [1, 2, 3],
     ...      'B': ['a', 'b', 'c'],
-    ...      'C': pd.date_range('2016-01-01', freq='d', periods=3),
-    ...     }, index=pd.Index(range(3), name='idx'))
+    ...      'C': pd.date_range('2016-01-01', freq='D', periods=3),
+    ...      }, index=pd.Index(range(3), name='idx'))
     >>> build_table_schema(df)
     {'fields': \
 [{'name': 'idx', 'type': 'integer'}, \

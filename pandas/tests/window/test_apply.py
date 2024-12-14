@@ -1,5 +1,3 @@
-import warnings
-
 import numpy as np
 import pytest
 
@@ -18,17 +16,15 @@ import pandas._testing as tm
 
 from pandas.tseries import offsets
 
+# suppress warnings about empty slices, as we are deliberately testing
+# with a 0-length Series
+pytestmark = pytest.mark.filterwarnings(
+    "ignore:.*(empty slice|0 for slice).*:RuntimeWarning"
+)
+
 
 def f(x):
-    # suppress warnings about empty slices, as we are deliberately testing
-    # with a 0-length Series
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore",
-            message=".*(empty slice|0 for slice).*",
-            category=RuntimeWarning,
-        )
-        return x[np.isfinite(x)].mean()
+    return x[np.isfinite(x)].mean()
 
 
 @pytest.mark.parametrize("bad_raw", [None, 1, 0])
@@ -188,8 +184,8 @@ def test_rolling_apply_args_kwargs(args_kwargs):
 
 def test_nans(raw):
     obj = Series(np.random.default_rng(2).standard_normal(50))
-    obj[:10] = np.NaN
-    obj[-10:] = np.NaN
+    obj[:10] = np.nan
+    obj[-10:] = np.nan
 
     result = obj.rolling(50, min_periods=30).apply(f, raw=raw)
     tm.assert_almost_equal(result.iloc[-1], np.mean(obj[10:-10]))
@@ -214,12 +210,12 @@ def test_nans(raw):
 
 def test_center(raw):
     obj = Series(np.random.default_rng(2).standard_normal(50))
-    obj[:10] = np.NaN
-    obj[-10:] = np.NaN
+    obj[:10] = np.nan
+    obj[-10:] = np.nan
 
     result = obj.rolling(20, min_periods=15, center=True).apply(f, raw=raw)
     expected = (
-        concat([obj, Series([np.NaN] * 9)])
+        concat([obj, Series([np.nan] * 9)])
         .rolling(20, min_periods=15)
         .apply(f, raw=raw)
         .iloc[9:]
@@ -305,8 +301,9 @@ def test_center_reindex_series(raw, series):
     tm.assert_series_equal(series_xp, series_rs)
 
 
-def test_center_reindex_frame(raw, frame):
+def test_center_reindex_frame(raw):
     # shifter index
+    frame = DataFrame(range(100), index=date_range("2020-01-01", freq="D", periods=100))
     s = [f"x{x:d}" for x in range(12)]
     minp = 10
 
@@ -319,13 +316,3 @@ def test_center_reindex_frame(raw, frame):
     )
     frame_rs = frame.rolling(window=25, min_periods=minp, center=True).apply(f, raw=raw)
     tm.assert_frame_equal(frame_xp, frame_rs)
-
-
-def test_axis1(raw):
-    # GH 45912
-    df = DataFrame([1, 2])
-    msg = "Support for axis=1 in DataFrame.rolling is deprecated"
-    with tm.assert_produces_warning(FutureWarning, match=msg):
-        result = df.rolling(window=1, axis=1).apply(np.sum, raw=raw)
-    expected = DataFrame([1.0, 2.0])
-    tm.assert_frame_equal(result, expected)

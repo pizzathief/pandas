@@ -1,6 +1,8 @@
 import numpy as np
 import pytest
 
+from pandas._config import using_string_dtype
+
 from pandas import (
     DataFrame,
     Series,
@@ -17,6 +19,7 @@ pytest.importorskip("tables")
 
 class TestHDFStoreSubclass:
     # GH 33748
+    @pytest.mark.xfail(using_string_dtype(), reason="TODO(infer_string)")
     def test_supported_for_subclass_dataframe(self, tmp_path):
         data = {"a": [1, 2], "b": [3, 4]}
         sdf = tm.SubclassedDataFrame(data, dtype=np.intp)
@@ -24,7 +27,7 @@ class TestHDFStoreSubclass:
         expected = DataFrame(data, dtype=np.intp)
 
         path = tmp_path / "temp.h5"
-        sdf.to_hdf(path, "df")
+        sdf.to_hdf(path, key="df")
         result = read_hdf(path, "df")
         tm.assert_frame_equal(result, expected)
 
@@ -41,7 +44,7 @@ class TestHDFStoreSubclass:
         expected = Series(data, dtype=np.intp)
 
         path = tmp_path / "temp.h5"
-        sser.to_hdf(path, "ser")
+        sser.to_hdf(path, key="ser")
         result = read_hdf(path, "ser")
         tm.assert_series_equal(result, expected)
 

@@ -155,17 +155,6 @@ speedups. ``numexpr`` uses smart chunking, caching, and multiple cores. ``bottle
 a set of specialized cython routines that are especially fast when dealing with arrays that have
 ``nans``.
 
-Here is a sample (using 100 column x 100,000 row ``DataFrames``):
-
-.. csv-table::
-    :header: "Operation", "0.11.0 (ms)", "Prior Version (ms)", "Ratio to Prior"
-    :widths: 25, 25, 25, 25
-    :delim: ;
-
-    ``df1 > df2``; 13.32; 125.35;  0.1063
-    ``df1 * df2``; 21.71;  36.63;  0.5928
-    ``df1 + df2``; 22.04;  36.50;  0.6039
-
 You are highly encouraged to install both libraries. See the section
 :ref:`Recommended Dependencies <install.recommended_dependencies>` for more installation info.
 
@@ -269,7 +258,7 @@ using ``fillna`` if you wish).
 .. ipython:: python
 
    df2 = df.copy()
-   df2["three"]["a"] = 1.0
+   df2.loc["a", "three"] = 1.0
    df
    df2
    df + df2
@@ -299,8 +288,7 @@ Boolean reductions
 ~~~~~~~~~~~~~~~~~~
 
 You can apply the reductions: :attr:`~DataFrame.empty`, :meth:`~DataFrame.any`,
-:meth:`~DataFrame.all`, and :meth:`~DataFrame.bool` to provide a
-way to summarize a boolean result.
+:meth:`~DataFrame.all`.
 
 .. ipython:: python
 
@@ -408,20 +396,6 @@ raise a ValueError:
 
     pd.Series(['foo', 'bar', 'baz']) == pd.Series(['foo'])
 
-Note that this is different from the NumPy behavior where a comparison can
-be broadcast:
-
-.. ipython:: python
-
-    np.array([1, 2, 3]) == np.array([2])
-
-or it can return False if broadcasting can not be done:
-
-.. ipython:: python
-   :okwarning:
-
-    np.array([1, 2, 3]) == np.array([1, 2])
-
 Combining overlapping data sets
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -491,15 +465,15 @@ For example:
 .. ipython:: python
 
    df
-   df.mean(0)
-   df.mean(1)
+   df.mean(axis=0)
+   df.mean(axis=1)
 
 All such methods have a ``skipna`` option signaling whether to exclude missing
 data (``True`` by default):
 
 .. ipython:: python
 
-   df.sum(0, skipna=False)
+   df.sum(axis=0, skipna=False)
    df.sum(axis=1, skipna=True)
 
 Combined with the broadcasting / arithmetic behavior, one can describe various
@@ -510,8 +484,8 @@ standard deviation of 1), very concisely:
 
    ts_stand = (df - df.mean()) / df.std()
    ts_stand.std()
-   xs_stand = df.sub(df.mean(1), axis=0).div(df.std(1), axis=0)
-   xs_stand.std(1)
+   xs_stand = df.sub(df.mean(axis=1), axis=0).div(df.std(axis=1), axis=0)
+   xs_stand.std(axis=1)
 
 Note that methods like :meth:`~DataFrame.cumsum` and :meth:`~DataFrame.cumprod`
 preserve the location of ``NaN`` values. This is somewhat different from
@@ -1323,8 +1297,8 @@ filling method chosen from the following table:
     :header: "Method", "Action"
     :widths: 30, 50
 
-    pad / ffill, Fill values forward
-    bfill / backfill, Fill values backward
+    ffill, Fill values forward
+    bfill, Fill values backward
     nearest, Fill from the nearest index value
 
 We illustrate these fill methods on a simple Series:
@@ -1622,7 +1596,7 @@ For instance:
 This method does not convert the row to a Series object; it merely
 returns the values inside a namedtuple. Therefore,
 :meth:`~DataFrame.itertuples` preserves the data type of the values
-and is generally faster as :meth:`~DataFrame.iterrows`.
+and is generally faster than :meth:`~DataFrame.iterrows`.
 
 .. note::
 
@@ -2021,7 +1995,7 @@ documentation sections for more on each type.
 |                                                 |                           |                    |                               | ``'Int64'``, ``'UInt8'``, ``'UInt16'``,|
 |                                                 |                           |                    |                               | ``'UInt32'``, ``'UInt64'``             |
 +-------------------------------------------------+---------------------------+--------------------+-------------------------------+----------------------------------------+
-| ``nullable float``                              | :class:`Float64Dtype`, ...| (none)             | :class:`arrays.FloatingArray` | ``'Float32'``, ``'Float64'``           |
+| :ref:`nullable float <api.arrays.float_na>`     | :class:`Float64Dtype`, ...| (none)             | :class:`arrays.FloatingArray` | ``'Float32'``, ``'Float64'``           |
 +-------------------------------------------------+---------------------------+--------------------+-------------------------------+----------------------------------------+
 | :ref:`Strings <text>`                           | :class:`StringDtype`      | :class:`str`       | :class:`arrays.StringArray`   | ``'string'``                           |
 +-------------------------------------------------+---------------------------+--------------------+-------------------------------+----------------------------------------+
@@ -2274,23 +2248,6 @@ non-conforming elements intermixed that you want to represent as missing:
 
     m = ["apple", pd.Timedelta("1day")]
     pd.to_timedelta(m, errors="coerce")
-
-The ``errors`` parameter has a third option of ``errors='ignore'``, which will simply return the passed in data if it
-encounters any errors with the conversion to a desired data type:
-
-.. ipython:: python
-    :okwarning:
-
-    import datetime
-
-    m = ["apple", datetime.datetime(2016, 3, 2)]
-    pd.to_datetime(m, errors="ignore")
-
-    m = ["apple", 2, 3]
-    pd.to_numeric(m, errors="ignore")
-
-    m = ["apple", pd.Timedelta("1day")]
-    pd.to_timedelta(m, errors="ignore")
 
 In addition to object conversion, :meth:`~pandas.to_numeric` provides another argument ``downcast``, which gives the
 option of downcasting the newly (or already) numeric data to a smaller dtype, which can conserve memory:

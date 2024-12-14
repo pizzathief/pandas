@@ -35,7 +35,7 @@ These are some neat pandas ``idioms``
    )
    df
 
-if-then...
+If-then...
 **********
 
 An if-then on one column
@@ -176,7 +176,7 @@ One could hard code:
 Selection
 ---------
 
-Dataframes
+DataFrames
 **********
 
 The :ref:`indexing <indexing>` docs.
@@ -311,7 +311,7 @@ The :ref:`multindexing <advanced.hierarchical>` docs.
    df.columns = pd.MultiIndex.from_tuples([tuple(c.split("_")) for c in df.columns])
    df
    # Now stack & Reset
-   df = df.stack(0, future_stack=True).reset_index(1)
+   df = df.stack(0).reset_index(1)
    df
    # And fix the labels (Notice the label 'level_1' got added automatically)
    df.columns = ["Sample", "All_X", "All_Y"]
@@ -459,14 +459,14 @@ Unlike agg, apply's callable is passed a sub-DataFrame which gives you access to
    df
 
    # List the size of the animals with the highest weight.
-   df.groupby("animal").apply(lambda subf: subf["size"][subf["weight"].idxmax()])
+   df.groupby("animal").apply(lambda subf: subf["size"][subf["weight"].idxmax()], include_groups=False)
 
 `Using get_group
 <https://stackoverflow.com/questions/14734533/how-to-access-pandas-groupby-dataframe-by-key>`__
 
 .. ipython:: python
 
-   gb = df.groupby(["animal"])
+   gb = df.groupby("animal")
    gb.get_group("cat")
 
 `Apply to different items in a group
@@ -482,7 +482,7 @@ Unlike agg, apply's callable is passed a sub-DataFrame which gives you access to
        return pd.Series(["L", avg_weight, True], index=["size", "weight", "adult"])
 
 
-   expected_df = gb.apply(GrowUp)
+   expected_df = gb.apply(GrowUp, include_groups=False)
    expected_df
 
 `Expanding apply
@@ -688,7 +688,7 @@ The :ref:`Pivot <reshaping.pivot>` docs.
        aggfunc="sum",
        margins=True,
    )
-   table.stack("City", future_stack=True)
+   table.stack("City")
 
 `Frequency table like plyr in R
 <https://stackoverflow.com/questions/15589354/frequency-tables-in-pandas-like-plyr-in-r>`__
@@ -771,7 +771,7 @@ To create year and month cross tabulation:
 
    df = pd.DataFrame(
        {"value": np.random.randn(36)},
-       index=pd.date_range("2011-01-01", freq="M", periods=36),
+       index=pd.date_range("2011-01-01", freq="ME", periods=36),
    )
 
    pd.pivot_table(
@@ -794,12 +794,12 @@ Apply
        index=["I", "II", "III"],
    )
 
-   def make_df(ser):
-       new_vals = [pd.Series(value, name=name) for name, value in ser.items()]
-       return pd.DataFrame(new_vals)
+   def SeriesFromSubList(aList):
+       return pd.Series(aList)
 
-   df_orgz = pd.concat({ind: row.pipe(make_df) for ind, row in df.iterrows()})
-
+   df_orgz = pd.concat(
+       {ind: row.apply(SeriesFromSubList) for ind, row in df.iterrows()}
+   )
    df_orgz
 
 `Rolling apply with a DataFrame returning a Series
@@ -914,7 +914,7 @@ Using TimeGrouper and another grouping to create subgroups, then apply a custom 
 <https://stackoverflow.com/questions/15408156/resampling-with-custom-periods>`__
 
 `Resample intraday frame without adding new days
-<https://stackoverflow.com/questions/14898574/resample-intrday-pandas-dataframe-without-add-new-days>`__
+<https://stackoverflow.com/questions/14898574/resample-intraday-pandas-dataframe-without-add-new-days>`__
 
 `Resample minute data
 <https://stackoverflow.com/questions/14861023/resampling-minute-data>`__
@@ -1489,7 +1489,7 @@ of the data values:
    )
    df
 
-Constant series
+Constant Series
 ---------------
 
 To assess if a series has a constant value, we can check if ``series.nunique() <= 1``.

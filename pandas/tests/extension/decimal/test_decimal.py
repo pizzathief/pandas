@@ -57,11 +57,6 @@ def na_cmp():
 
 
 @pytest.fixture
-def na_value():
-    return decimal.Decimal("NaN")
-
-
-@pytest.fixture
 def data_for_grouping():
     b = decimal.Decimal("1.0")
     a = decimal.Decimal("0.0")
@@ -70,150 +65,113 @@ def data_for_grouping():
     return DecimalArray([b, b, na, na, a, a, b, c])
 
 
-class TestDtype(base.BaseDtypeTests):
-    pass
+class TestDecimalArray(base.ExtensionTests):
+    def _get_expected_exception(
+        self, op_name: str, obj, other
+    ) -> type[Exception] | tuple[type[Exception], ...] | None:
+        return None
 
+    def _supports_reduction(self, ser: pd.Series, op_name: str) -> bool:
+        if op_name in ["kurt", "sem"]:
+            return False
+        return True
 
-class TestInterface(base.BaseInterfaceTests):
-    pass
+    def check_reduce(self, ser: pd.Series, op_name: str, skipna: bool):
+        if op_name == "count":
+            return super().check_reduce(ser, op_name, skipna)
+        else:
+            result = getattr(ser, op_name)(skipna=skipna)
+            expected = getattr(np.asarray(ser), op_name)()
+            tm.assert_almost_equal(result, expected)
 
+    def test_reduce_series_numeric(self, data, all_numeric_reductions, skipna, request):
+        if all_numeric_reductions in ["kurt", "skew", "sem", "median"]:
+            mark = pytest.mark.xfail(raises=NotImplementedError)
+            request.applymarker(mark)
+        super().test_reduce_series_numeric(data, all_numeric_reductions, skipna)
 
-class TestConstructors(base.BaseConstructorsTests):
-    pass
+    def test_reduce_frame(self, data, all_numeric_reductions, skipna, request):
+        op_name = all_numeric_reductions
+        if op_name in ["skew", "median"]:
+            mark = pytest.mark.xfail(raises=NotImplementedError)
+            request.applymarker(mark)
 
+        return super().test_reduce_frame(data, all_numeric_reductions, skipna)
 
-class TestReshaping(base.BaseReshapingTests):
-    pass
+    def test_compare_scalar(self, data, comparison_op):
+        ser = pd.Series(data)
+        self._compare_other(ser, data, comparison_op, 0.5)
 
+    def test_compare_array(self, data, comparison_op):
+        ser = pd.Series(data)
 
-class TestGetitem(base.BaseGetitemTests):
-    def test_take_na_value_other_decimal(self):
-        arr = DecimalArray([decimal.Decimal("1.0"), decimal.Decimal("2.0")])
-        result = arr.take([0, -1], allow_fill=True, fill_value=decimal.Decimal("-1.0"))
-        expected = DecimalArray([decimal.Decimal("1.0"), decimal.Decimal("-1.0")])
-        tm.assert_extension_array_equal(result, expected)
+        alter = np.random.default_rng(2).choice([-1, 0, 1], len(data))
+        # Randomly double, halve or keep same value
+        other = pd.Series(data) * [decimal.Decimal(pow(2.0, i)) for i in alter]
+        self._compare_other(ser, data, comparison_op, other)
 
+    def test_arith_series_with_array(self, data, all_arithmetic_operators):
+        op_name = all_arithmetic_operators
+        ser = pd.Series(data)
 
-class TestIndex(base.BaseIndexTests):
-    pass
+        context = decimal.getcontext()
+        divbyzerotrap = context.traps[decimal.DivisionByZero]
+        invalidoptrap = context.traps[decimal.InvalidOperation]
+        context.traps[decimal.DivisionByZero] = 0
+        context.traps[decimal.InvalidOperation] = 0
 
+        # Decimal supports ops with int, but not float
+        other = pd.Series([int(d * 100) for d in data])
+        self.check_opname(ser, op_name, other)
 
-class TestMissing(base.BaseMissingTests):
+        if "mod" not in op_name:
+            self.check_opname(ser, op_name, ser * 2)
+
+        self.check_opname(ser, op_name, 0)
+        self.check_opname(ser, op_name, 5)
+        context.traps[decimal.DivisionByZero] = divbyzerotrap
+        context.traps[decimal.InvalidOperation] = invalidoptrap
+
     def test_fillna_frame(self, data_missing):
         msg = "ExtensionArray.fillna added a 'copy' keyword"
         with tm.assert_produces_warning(
-            FutureWarning, match=msg, check_stacklevel=False
+            DeprecationWarning, match=msg, check_stacklevel=False
         ):
             super().test_fillna_frame(data_missing)
-
-    def test_fillna_limit_pad(self, data_missing):
-        msg = "ExtensionArray.fillna 'method' keyword is deprecated"
-        with tm.assert_produces_warning(
-            FutureWarning, match=msg, check_stacklevel=False
-        ):
-            super().test_fillna_limit_pad(data_missing)
-
-    def test_fillna_limit_backfill(self, data_missing):
-        msg = "|".join(
-            [
-                "ExtensionArray.fillna added a 'copy' keyword",
-                "Series.fillna with 'method' is deprecated",
-            ]
-        )
-        with tm.assert_produces_warning(
-            FutureWarning, match=msg, check_stacklevel=False
-        ):
-            super().test_fillna_limit_backfill(data_missing)
-
-    def test_fillna_no_op_returns_copy(self, data):
-        msg = "ExtensionArray.fillna 'method' keyword is deprecated"
-        with tm.assert_produces_warning(
-            FutureWarning, match=msg, check_stacklevel=False
-        ):
-            super().test_fillna_no_op_returns_copy(data)
 
     def test_fillna_series(self, data_missing):
         msg = "ExtensionArray.fillna added a 'copy' keyword"
         with tm.assert_produces_warning(
-            FutureWarning, match=msg, check_stacklevel=False
+            DeprecationWarning, match=msg, check_stacklevel=False
         ):
             super().test_fillna_series(data_missing)
 
-    def test_fillna_series_method(self, data_missing, fillna_method):
-        msg = "ExtensionArray.fillna 'method' keyword is deprecated"
+    def test_fillna_with_none(self, data_missing):
+        # GH#57723
+        # EAs that don't have special logic for None will raise, unlike pandas'
+        # which interpret None as the NA value for the dtype.
+        msg = "conversion from NoneType to Decimal is not supported"
+        with pytest.raises(TypeError, match=msg):
+            super().test_fillna_with_none(data_missing)
+
+    def test_fillna_limit_frame(self, data_missing):
+        # GH#58001
+        msg = "ExtensionArray.fillna added a 'copy' keyword"
         with tm.assert_produces_warning(
-            FutureWarning, match=msg, check_stacklevel=False
+            DeprecationWarning, match=msg, check_stacklevel=False
         ):
-            super().test_fillna_series_method(data_missing, fillna_method)
+            super().test_fillna_limit_frame(data_missing)
 
-
-class Reduce:
-    def _supports_reduction(self, obj, op_name: str) -> bool:
-        return True
-
-    def check_reduce(self, s, op_name, skipna):
-        if op_name in ["median", "skew", "kurt", "sem"]:
-            msg = r"decimal does not support the .* operation"
-            with pytest.raises(NotImplementedError, match=msg):
-                getattr(s, op_name)(skipna=skipna)
-        elif op_name == "count":
-            result = getattr(s, op_name)()
-            expected = len(s) - s.isna().sum()
-            tm.assert_almost_equal(result, expected)
-        else:
-            result = getattr(s, op_name)(skipna=skipna)
-            expected = getattr(np.asarray(s), op_name)()
-            tm.assert_almost_equal(result, expected)
-
-    def test_reduction_without_keepdims(self):
-        # GH52788
-        # test _reduce without keepdims
-
-        class DecimalArray2(DecimalArray):
-            def _reduce(self, name: str, *, skipna: bool = True, **kwargs):
-                # no keepdims in signature
-                return super()._reduce(name, skipna=skipna)
-
-        arr = DecimalArray2([decimal.Decimal(2) for _ in range(100)])
-
-        ser = pd.Series(arr)
-        result = ser.agg("sum")
-        expected = decimal.Decimal(200)
-        assert result == expected
-
-        df = pd.DataFrame({"a": arr, "b": arr})
-        with tm.assert_produces_warning(FutureWarning):
-            result = df.agg("sum")
-        expected = pd.Series({"a": 200, "b": 200}, dtype=object)
-        tm.assert_series_equal(result, expected)
-
-
-class TestReduce(Reduce, base.BaseReduceTests):
-    @pytest.mark.parametrize("skipna", [True, False])
-    def test_reduce_frame(self, data, all_numeric_reductions, skipna):
-        op_name = all_numeric_reductions
-        if op_name in ["skew", "median"]:
-            assert not hasattr(data, op_name)
-            pytest.skip(f"{op_name} not an array method")
-
-        return super().test_reduce_frame(data, all_numeric_reductions, skipna)
-
-
-class TestMethods(base.BaseMethodsTests):
-    def test_fillna_copy_frame(self, data_missing, using_copy_on_write):
-        warn = FutureWarning if not using_copy_on_write else None
+    def test_fillna_limit_series(self, data_missing):
+        # GH#58001
         msg = "ExtensionArray.fillna added a 'copy' keyword"
-        with tm.assert_produces_warning(warn, match=msg, check_stacklevel=False):
-            super().test_fillna_copy_frame(data_missing)
-
-    def test_fillna_copy_series(self, data_missing, using_copy_on_write):
-        warn = FutureWarning if not using_copy_on_write else None
-        msg = "ExtensionArray.fillna added a 'copy' keyword"
-        with tm.assert_produces_warning(warn, match=msg, check_stacklevel=False):
-            super().test_fillna_copy_series(data_missing)
+        with tm.assert_produces_warning(
+            DeprecationWarning, match=msg, check_stacklevel=False
+        ):
+            super().test_fillna_limit_series(data_missing)
 
     @pytest.mark.parametrize("dropna", [True, False])
-    def test_value_counts(self, all_data, dropna, request):
+    def test_value_counts(self, all_data, dropna):
         all_data = all_data[:10]
         if dropna:
             other = np.array(all_data[~all_data.isna()])
@@ -232,26 +190,24 @@ class TestMethods(base.BaseMethodsTests):
 
         tm.assert_series_equal(result, expected)
 
-
-class TestCasting(base.BaseCastingTests):
-    pass
-
-
-class TestGroupby(base.BaseGroupbyTests):
-    pass
-
-
-class TestSetitem(base.BaseSetitemTests):
-    pass
-
-
-class TestPrinting(base.BasePrintingTests):
     def test_series_repr(self, data):
         # Overriding this base test to explicitly test that
         # the custom _formatter is used
         ser = pd.Series(data)
         assert data.dtype.name in repr(ser)
         assert "Decimal: " in repr(ser)
+
+    @pytest.mark.xfail(reason="Inconsistent array-vs-scalar behavior")
+    @pytest.mark.parametrize("ufunc", [np.positive, np.negative, np.abs])
+    def test_unary_ufunc_dunder_equivalence(self, data, ufunc):
+        super().test_unary_ufunc_dunder_equivalence(data, ufunc)
+
+
+def test_take_na_value_other_decimal():
+    arr = DecimalArray([decimal.Decimal("1.0"), decimal.Decimal("2.0")])
+    result = arr.take([0, -1], allow_fill=True, fill_value=decimal.Decimal("-1.0"))
+    expected = DecimalArray([decimal.Decimal("1.0"), decimal.Decimal("-1.0")])
+    tm.assert_extension_array_equal(result, expected)
 
 
 def test_series_constructor_coerce_data_to_extension_dtype():
@@ -290,8 +246,7 @@ def test_dataframe_constructor_with_dtype():
     tm.assert_frame_equal(result, expected)
 
 
-@pytest.mark.parametrize("frame", [True, False])
-def test_astype_dispatches(frame):
+def test_astype_dispatches(frame_or_series):
     # This is a dtype-specific test that ensures Series[decimal].astype
     # gets all the way through to ExtensionArray.astype
     # Designing a reliable smoke test that works for arbitrary data types
@@ -300,69 +255,21 @@ def test_astype_dispatches(frame):
     ctx = decimal.Context()
     ctx.prec = 5
 
-    if frame:
-        data = data.to_frame()
+    data = frame_or_series(data)
 
     result = data.astype(DecimalDtype(ctx))
 
-    if frame:
+    if frame_or_series is pd.DataFrame:
         result = result["a"]
 
     assert result.dtype.context.prec == ctx.prec
-
-
-class TestArithmeticOps(base.BaseArithmeticOpsTests):
-    series_scalar_exc = None
-    frame_scalar_exc = None
-    series_array_exc = None
-
-    def _get_expected_exception(
-        self, op_name: str, obj, other
-    ) -> type[Exception] | None:
-        return None
-
-    def test_arith_series_with_array(self, data, all_arithmetic_operators):
-        op_name = all_arithmetic_operators
-        s = pd.Series(data)
-
-        context = decimal.getcontext()
-        divbyzerotrap = context.traps[decimal.DivisionByZero]
-        invalidoptrap = context.traps[decimal.InvalidOperation]
-        context.traps[decimal.DivisionByZero] = 0
-        context.traps[decimal.InvalidOperation] = 0
-
-        # Decimal supports ops with int, but not float
-        other = pd.Series([int(d * 100) for d in data])
-        self.check_opname(s, op_name, other)
-
-        if "mod" not in op_name:
-            self.check_opname(s, op_name, s * 2)
-
-        self.check_opname(s, op_name, 0)
-        self.check_opname(s, op_name, 5)
-        context.traps[decimal.DivisionByZero] = divbyzerotrap
-        context.traps[decimal.InvalidOperation] = invalidoptrap
-
-
-class TestComparisonOps(base.BaseComparisonOpsTests):
-    def test_compare_scalar(self, data, comparison_op):
-        s = pd.Series(data)
-        self._compare_other(s, data, comparison_op, 0.5)
-
-    def test_compare_array(self, data, comparison_op):
-        s = pd.Series(data)
-
-        alter = np.random.default_rng(2).choice([-1, 0, 1], len(data))
-        # Randomly double, halve or keep same value
-        other = pd.Series(data) * [decimal.Decimal(pow(2.0, i)) for i in alter]
-        self._compare_other(s, data, comparison_op, other)
 
 
 class DecimalArrayWithoutFromSequence(DecimalArray):
     """Helper class for testing error handling in _from_sequence."""
 
     @classmethod
-    def _from_sequence(cls, scalars, dtype=None, copy=False):
+    def _from_sequence(cls, scalars, *, dtype=None, copy=False):
         raise KeyError("For the test")
 
 
@@ -560,12 +467,11 @@ def test_to_numpy_keyword():
     tm.assert_numpy_array_equal(result, expected)
 
 
-def test_array_copy_on_write(using_copy_on_write):
+def test_array_copy_on_write():
     df = pd.DataFrame({"a": [decimal.Decimal(2), decimal.Decimal(3)]}, dtype="object")
     df2 = df.astype(DecimalDtype())
     df.iloc[0, 0] = 0
-    if using_copy_on_write:
-        expected = pd.DataFrame(
-            {"a": [decimal.Decimal(2), decimal.Decimal(3)]}, dtype=DecimalDtype()
-        )
-        tm.assert_equal(df2.values, expected.values)
+    expected = pd.DataFrame(
+        {"a": [decimal.Decimal(2), decimal.Decimal(3)]}, dtype=DecimalDtype()
+    )
+    tm.assert_equal(df2.values, expected.values)
