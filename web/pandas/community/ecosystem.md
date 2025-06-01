@@ -30,6 +30,12 @@ modeling functionality that is out of pandas' scope. Statsmodels
 leverages pandas objects as the underlying data container for
 computation.
 
+### [skrub](https://skrub-data.org)
+
+Skrub facilitates machine learning on dataframes. It bridges pandas
+to scikit-learn and related. In particular it facilitates building
+features from dataframes.
+
 ### [Featuretools](https://github.com/alteryx/featuretools/)
 
 Featuretools is a Python library for automated feature engineering built
@@ -118,7 +124,7 @@ sns.set_theme()
 Hadley Wickham's [ggplot2](https://ggplot2.tidyverse.org/) is a
 foundational exploratory visualization package for the R language. Based
 on ["The Grammar of
-Graphics"](https://www.cs.uic.edu/~wilkinson/TheGrammarOfGraphics/GOG.html)
+Graphics"](https://doi.org/10.1007/0-387-28695-0)
 it provides a powerful, declarative and extremely general way to
 generate bespoke plots of any kind of data.
 Various implementations to other languages are available.
@@ -140,11 +146,8 @@ Seaborn](https://plot.ly/python/matplotlib-to-plotly-tutorial/) can
 convert figures into interactive web-based plots. Plots can be drawn in
 [IPython Notebooks](https://plot.ly/ipython-notebooks/) , edited with R
 or MATLAB, modified in a GUI, or embedded in apps and dashboards. Plotly
-is free for unlimited sharing, and has
-[cloud](https://plot.ly/product/plans/),
-[offline](https://plot.ly/python/offline/), or
-[on-premise](https://plot.ly/product/enterprise/) accounts for private
-use.
+is free for unlimited sharing, and has cloud, offline, or on-premise
+accounts for private use.
 
 ### [Lux](https://github.com/lux-org/lux)
 
@@ -158,7 +161,7 @@ df = pd.read_csv("data.csv")
 df  # discover interesting insights!
 ```
 
-By printing out a dataframe, Lux automatically [recommends a set of visualizations](https://raw.githubusercontent.com/lux-org/lux-resources/master/readme_img/demohighlight.gif) that highlights interesting trends and patterns in the dataframe. Users can leverage any existing pandas commands without modifying their code, while being able to visualize their pandas data structures (e.g., DataFrame, Series, Index) at the same time. Lux also offers a [powerful, intuitive language](https://lux-api.readthedocs.io/en/latest/source/guide/vis.html>) that allow users to create  Altair, matplotlib, or Vega-Lite visualizations without having to think at the level of code.
+By printing out a dataframe, Lux automatically [recommends a set of visualizations](https://raw.githubusercontent.com/lux-org/lux-resources/master/readme_img/demohighlight.gif) that highlights interesting trends and patterns in the dataframe. Users can leverage any existing pandas commands without modifying their code, while being able to visualize their pandas data structures (e.g., DataFrame, Series, Index) at the same time. Lux also offers a [powerful, intuitive language](https://lux-api.readthedocs.io/en/latest/source/guide/vis.html) that allow users to create  Altair, matplotlib, or Vega-Lite visualizations without having to think at the level of code.
 
 ### [D-Tale](https://github.com/man-group/dtale)
 
@@ -205,7 +208,7 @@ standard output formats (HTML, HTML presentation slides, LaTeX, PDF,
 ReStructuredText, Markdown, Python) through 'Download As' in the web
 interface and `jupyter convert` in a shell.
 
-Pandas DataFrames implement `_repr_html_`and `_repr_latex` methods which
+Pandas DataFrames implement `_repr_html_` and `_repr_latex` methods which
 are utilized by Jupyter Notebook for displaying (abbreviated) HTML or
 LaTeX tables. LaTeX output is properly escaped. (Note: HTML tables may
 or may not be compatible with non-HTML Jupyter output formats.)
@@ -342,7 +345,7 @@ It supports the following data types:
 
 - pandas data types
 - data types defined in the [NTV format](https://loco-philippe.github.io/ES/JSON%20semantic%20format%20(JSON-NTV).htm)
-- data types defined in [Table Schema specification](http://dataprotocols.org/json-table-schema/#field-types-and-formats)
+- data types defined in [Table Schema specification](https://datapackage.org/standard/table-schema/)
 
 The interface is always reversible (conversion round trip) with two formats (JSON-NTV and JSON-TableSchema).
 
@@ -466,7 +469,7 @@ read_record.data
 df.dtypes
 ```
 
-ArcticDB also supports appending, updating, and querying data from storage to a pandas DataFrame. Please find more information [here](https://docs.arcticdb.io/latest/api/query_builder/).
+ArcticDB also supports appending, updating, and querying data from storage to a pandas DataFrame. Please find more information [here](https://docs.arcticdb.io/latest/api/processing/#arcticdb.QueryBuilder).
 
 ### [Hugging Face](https://huggingface.co/datasets)
 
@@ -590,7 +593,7 @@ df = pd.read_csv("big.csv")  # use all your cores!
 ### [Pandarallel](https://github.com/nalepae/pandarallel)
 
 Pandarallel provides a simple way to parallelize your pandas operations on all your CPUs by changing only one line of code.
-If also displays progress bars.
+It also displays progress bars.
 
 ```python
 from pandarallel import pandarallel
@@ -652,7 +655,7 @@ Pandas provides an interface for defining
 The following libraries implement that interface to provide types not found in NumPy or pandas,
 which work well with pandas' data containers.
 
-### [awkward-pandas](https://awkward-pandas.readthedocs.io/)
+### [awkward-pandas](https://github.com/scikit-hep/awkward)
 
 Awkward-pandas provides an extension type for storing [Awkward
 Arrays](https://awkward-array.org/) inside pandas' Series and
@@ -688,7 +691,7 @@ units aware.
 
 ### [Text Extensions](https://ibm.biz/text-extensions-for-pandas)
 
-Text Extensions for Pandas provides extension types to cover common data structures for representing natural language data, plus library integrations that convert the outputs of popular natural language processing libraries into Pandas DataFrames.
+Text Extensions for Pandas provides extension types to cover common data structures for representing natural language data, plus library integrations that convert the outputs of popular natural language processing libraries into pandas DataFrames.
 
 ## Accessors
 

@@ -891,6 +891,10 @@ into ``freq`` keyword arguments. The available date offsets and associated frequ
     :class:`~pandas.tseries.offsets.BQuarterEnd`, ``'BQE``, "business quarter end"
     :class:`~pandas.tseries.offsets.BQuarterBegin`, ``'BQS'``, "business quarter begin"
     :class:`~pandas.tseries.offsets.FY5253Quarter`, ``'REQ'``, "retail (aka 52-53 week) quarter"
+    :class:`~pandas.tseries.offsets.HalfYearEnd`, ``'HYE'``, "calendar half year end"
+    :class:`~pandas.tseries.offsets.HalfYearBegin`, ``'HYS'``, "calendar half year begin"
+    :class:`~pandas.tseries.offsets.BHalfYearEnd`, ``'BHYE``, "business half year end"
+    :class:`~pandas.tseries.offsets.BHalfYearBegin`, ``'BHYS'``, "business half year begin"
     :class:`~pandas.tseries.offsets.YearEnd`, ``'YE'``, "calendar year end"
     :class:`~pandas.tseries.offsets.YearBegin`, ``'YS'`` or ``'BYS'``,"calendar year begin"
     :class:`~pandas.tseries.offsets.BYearEnd`, ``'BYE'``, "business year end"
@@ -2454,7 +2458,7 @@ you can use the ``tz_convert`` method.
 
     For ``pytz`` time zones, it is incorrect to pass a time zone object directly into
     the ``datetime.datetime`` constructor
-    (e.g., ``datetime.datetime(2011, 1, 1, tzinfo=pytz.timezone('US/Eastern'))``.
+    (e.g., ``datetime.datetime(2011, 1, 1, tzinfo=pytz.timezone('US/Eastern'))``).
     Instead, the datetime needs to be localized using the ``localize`` method
     on the ``pytz`` time zone object.
 
